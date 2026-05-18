@@ -1,0 +1,146 @@
+---
+title: MCP server
+description: Use DocketLayer directly from Claude and other AI agents via the Model Context Protocol.
+---
+
+DocketLayer exposes a remote MCP server at `POST /v2/mcp`. Any MCP-compatible client — Claude Code, Claude Desktop, or any agent using the MCP Streamable HTTP transport — can connect directly. No package installation required.
+
+## Endpoint
+
+```
+POST https://api.docketlayer.ai/v2/mcp
+```
+
+Transport: **MCP Streamable HTTP** (protocol version `2025-11-25`)
+
+## Claude Code setup
+
+Add DocketLayer to your Claude Code MCP configuration (`~/.claude/mcp.json` or project-level `.claude/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "docketlayer": {
+      "type": "http",
+      "url": "https://api.docketlayer.ai/v2/mcp"
+    }
+  }
+}
+```
+
+No API keys or private keys are required in the configuration. Payment for paid tools is passed per-call via the `payment_tx` argument (see [Payment](#payment) below).
+
+## Claude Desktop setup
+
+In your Claude Desktop configuration file (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "docketlayer": {
+      "type": "http",
+      "url": "https://api.docketlayer.ai/v2/mcp"
+    }
+  }
+}
+```
+
+## Available tools
+
+### Free tools (no payment required)
+
+**`docketlayer_status`**
+
+Returns DocketLayer's current operational status, covered courts, planned coverage, and API version.
+
+**`docketlayer_court_list`**
+
+Lists all courts DocketLayer covers or plans to cover, with court codes, names, jurisdictions, and case ID formats.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `include_planned` | boolean | Include planned courts. Default: true. |
+
+**`docketlayer_pricing`**
+
+Returns pricing model — per-query cost, free endpoints, and payment protocol.
+
+---
+
+### Paid tools ($0.99 per call)
+
+Each paid tool accepts a `payment_tx` argument — a base64-encoded signed Solana USDC transfer of $0.99 to the DocketLayer receiver address. Omit `payment_tx` to receive structured payment instructions instead of an error (see [Payment](#payment)).
+
+**`docketlayer_case_query`**
+
+Queries a case for current context and recent docket activity. Costs $0.99 per call.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `case_id` | string | Yes | Case identifier |
+| `court_code` | string | Yes | Court identifier |
+| `payment_tx` | string | No | Base64-encoded signed Solana USDC transfer. Omit to receive payment instructions. |
+| `last_checked` | string | No | ISO-8601 timestamp. Includes delta block when supplied. |
+| `context` | string | No | `basic` or `full` |
+| `language` | string | No | `en` or `fr` |
+| `filing_types` | string | No | Comma-separated filing types to filter delta |
+
+**`docketlayer_case_monitor`**
+
+Checks whether a case has changed since a given timestamp. Slimmer than `case_query` for high-frequency loops. Costs $0.99 per call.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `case_id` | string | Yes | Case identifier |
+| `court_code` | string | Yes | Court identifier |
+| `last_checked` | string | Yes | ISO-8601 timestamp with timezone offset |
+| `payment_tx` | string | No | Base64-encoded signed Solana USDC transfer. Omit to receive payment instructions. |
+
+**`docketlayer_case_batch`**
+
+Queries up to 50 cases in a single call. Each successful case costs $0.99.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `queries` | array | Array of query objects — same fields as `case_query` (excluding `payment_tx`) |
+| `payment_tx` | string | Base64-encoded signed Solana USDC transfer. Omit to receive payment instructions. |
+
+**`docketlayer_wallet_info`**
+
+Returns the configured wallet's signing-key state and optionally recent callback delivery history.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `payment_tx_keys` | string | Payment for the keys lookup ($0.99). Omit to receive payment instructions. |
+| `include_deliveries` | boolean | Include callback delivery history. Default: false. |
+| `payment_tx_deliveries` | string | Payment for delivery history ($0.99). Required when `include_deliveries` is true. |
+| `deliveries_limit` | number | Max delivery records to return. Default: 50. Max: 200. |
+
+## Payment
+
+Paid tools do not require a pre-configured wallet. Instead, each call accepts a `payment_tx` argument.
+
+**If `payment_tx` is omitted**, the tool returns structured payment instructions rather than an error:
+
+```json
+{
+  "payment_required": true,
+  "amount_usdc": "0.99",
+  "network": "Solana (mainnet)",
+  "recipient": "<receiver_address>",
+  "asset": "USDC",
+  "next_step": "Create a Solana USDC transfer of 0.99 USDC to <receiver_address>, sign it, base64-encode the signed transaction, and call this tool again with that value as payment_tx."
+}
+```
+
+**To pay**, construct a Solana USDC transfer of exactly $0.99 to the receiver address shown in the instructions, sign it with your wallet, base64-encode the signed transaction bytes, and call the tool again with that value as `payment_tx`.
+
+See [x402 payment protocol](/x402) for details on constructing payment transactions.
+
+## Example usage in Claude
+
+Once configured, you can ask Claude directly:
+
+> "Check DocketLayer for any new filings in case 1:24-cv-01234 in the Southern District of New York since January 1st."
+
+Claude will call `docketlayer_case_query`. If payment is required, it will relay the payment instructions so you can construct the `payment_tx` and retry. The three free tools (`docketlayer_status`, `docketlayer_court_list`, `docketlayer_pricing`) work without any payment.

@@ -1,0 +1,230 @@
+---
+title: GET /v2/case
+description: The primary query endpoint. Returns current case context and all new filings since your last check.
+---
+
+## Overview
+
+`GET /v2/case` is the primary DocketLayer endpoint. Submit a case ID and court code, pay $0.99 in USDC via x402, and receive structured case data. Supply `last_checked` to get a `delta` block containing every new filing since your last query.
+
+**Base URL:** `https://api.docketlayer.ai`
+
+**Price:** $0.99 USDC per successful query
+
+**Sandbox:** Add `?test=1` or `X-DocketLayer-Test: 1` — returns fixture data, no charge
+
+## Request
+
+### Parameters
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `case_id` | string | Yes | Case identifier — e.g. `1:24-cv-01234` |
+| `court_code` | string | Yes | Court identifier — e.g. `nysd`, `deb`, `cand` |
+| `last_checked` | string | No | ISO-8601 timestamp with timezone offset. When supplied, response includes a `delta` block. |
+| `context` | string | No | `basic` (default) or `full`. `full` adds full party list with attorneys, cross-references, and complete docket history. |
+| `language` | string | No | `en` or `fr`. For bilingual jurisdictions, requests the preferred response language. |
+| `filing_types` | string | No | Comma-separated list of filing types to filter the delta — e.g. `order,judgment`. Does not filter the case context. |
+| `callback_url` | string | No | Webhook URL for async result delivery. Response is immediate; payload is pushed when ready. |
+
+### Example request
+
+```bash
+curl "https://api.docketlayer.ai/v2/case?case_id=1:24-cv-01234&court_code=nysd&last_checked=2026-01-01T00:00:00Z"
+```
+
+```python Python
+result = client.get(
+    "https://api.docketlayer.ai/v2/case",
+    params={
+        "case_id": "1:24-cv-01234",
+        "court_code": "nysd",
+        "last_checked": "2026-01-01T00:00:00Z",
+        "context": "basic"
+    }
+).json()
+```
+
+## Response
+
+### Meta block
+
+All responses include a `meta` block:
+
+| Field | Type | Description |
+|---|---|---|
+| `request_id` | string | Unique identifier for this request |
+| `queried_at` | string | ISO-8601 timestamp — use as `last_checked` in your next call |
+| `query_cost_usd` | number | Always 0.99 for live queries; 0 in sandbox |
+| `coverage_status` | string | `full` or `partial` for this court |
+| `cache_age_seconds` | number | Seconds since DocketLayer last refreshed this case from the source court |
+| `context_delivered` | string | `basic` or `full` |
+| `language_delivered` | string | `en`, `fr`, or `bilingual` |
+| `truncated` | boolean | Whether the response was truncated |
+| `sandbox` | boolean | Whether sandbox mode was active |
+| `tag` | string \| null | Value of `X-DocketLayer-Tag` header if supplied |
+
+### Context: basic (default)
+
+```json
+{
+  "meta": {
+    "request_id": "req_01jt7y4kx0",
+    "queried_at": "2026-04-29T12:00:00Z",
+    "query_cost_usd": 0.99,
+    "coverage_status": "full",
+    "cache_age_seconds": 87,
+    "context_delivered": "basic",
+    "language_delivered": "en",
+    "truncated": false,
+    "sandbox": false,
+    "tag": null
+  },
+  "case_id": "1:24-cv-01234",
+  "court_code": "nysd",
+  "case": {
+    "case_number": "1:24-cv-01234",
+    "case_name": "Smith v. Jones",
+    "case_name_secondary": null,
+    "case_name_secondary_language": null,
+    "case_type": "civil",
+    "court_code": "nysd",
+    "court_name": "Southern District of New York",
+    "jurisdiction_country": "US",
+    "language": "en",
+    "date_filed": "2024-05-10T00:00:00-04:00",
+    "date_terminated": null,
+    "status": "open",
+    "assigned_judge": "Hon. Sarah Johnson",
+    "nature_of_proceeding": "Contract: Other",
+    "cause": "28 USC 1332",
+    "jury_demand": "both",
+    "primary_parties": [
+      { "name": "John Smith", "type": "plaintiff" },
+      { "name": "Acme Corp.", "type": "defendant" }
+    ],
+    "appellate": null
+  },
+  "delta": {
+    "changed": true,
+    "since": "2026-01-01T00:00:00Z",
+    "change_count": 1,
+    "new_filings": [
+      {
+        "entry_number": 42,
+        "filed_at": "2026-04-11T14:23:00Z",
+        "filing_type": "order",
+        "filed_by": "Hon. Sarah Johnson",
+        "description": "Order granting motion to dismiss",
+        "document_identifier": "0042",
+        "document_identifier_type": "pacer_doc_id",
+        "external_url": "https://ecf.nysd.uscourts.gov/doc1/..."
+      }
+    ]
+  }
+}
+```
+
+The `delta` block is only present when `last_checked` is supplied.
+
+### Context: full
+
+When `context=full`, the `case` object expands to include full parties with attorneys, cross-references to related cases, and the complete docket history.
+
+```json
+{
+  "case": {
+    "...all basic fields...",
+    "parties": [
+      {
+        "name": "John Smith",
+        "type": "plaintiff",
+        "role_in_case": "lead plaintiff",
+        "date_joined": "2024-05-10T00:00:00Z",
+        "date_terminated": null,
+        "attorneys": [
+          {
+            "name": "Jane Doe",
+            "firm": "Doe & Associates LLP",
+            "role": "lead counsel",
+            "date_action": "2024-05-10T00:00:00Z"
+          }
+        ]
+      }
+    ],
+    "cross_references": [
+      {
+        "relationship": "consolidated",
+        "case_id": "1:24-cv-01235",
+        "court_code": "nysd",
+        "relationship_note": null
+      }
+    ],
+    "docket_history": [
+      {
+        "entry_number": 1,
+        "filed_at": "2024-05-10T09:00:00Z",
+        "filing_type": "complaint",
+        "filed_by": "John Smith",
+        "description": "Complaint filed",
+        "document_identifier": "0001",
+        "document_identifier_type": "pacer_doc_id",
+        "external_url": "https://ecf.nysd.uscourts.gov/doc1/..."
+      }
+    ]
+  }
+}
+```
+
+### Case fields
+
+| Field | Type | Description |
+|---|---|---|
+| `case_number` | string | The case identifier |
+| `case_name` | string | Primary case name |
+| `case_name_secondary` | string \| null | Secondary name (bilingual jurisdictions) |
+| `case_name_secondary_language` | string \| null | Language of secondary name |
+| `case_type` | string | `civil`, `criminal`, `bankruptcy`, `appellate`, etc. |
+| `court_code` | string | Court identifier |
+| `court_name` | string | Full court name |
+| `jurisdiction_country` | string | `US` or `CA` |
+| `language` | string \| null | `en`, `fr`, or `bilingual` |
+| `date_filed` | string \| null | ISO-8601 case filing date |
+| `date_terminated` | string \| null | ISO-8601 termination date if closed |
+| `status` | string | `open` or `closed` |
+| `assigned_judge` | string \| null | Assigned judge name |
+| `nature_of_proceeding` | string \| null | Nature of suit or proceeding |
+| `cause` | string \| null | Statutory cause of action (US federal courts) |
+| `jury_demand` | string \| null | `plaintiff`, `defendant`, `both`, or `none` |
+| `primary_parties` | array | Primary plaintiff and defendant (basic context) |
+| `appellate` | object \| null | Appellate-specific fields if applicable |
+
+### Delta fields
+
+| Field | Type | Description |
+|---|---|---|
+| `changed` | boolean | Whether any new filings were found since `last_checked` |
+| `since` | string | The `last_checked` value you supplied |
+| `change_count` | number | Number of new filings |
+| `new_filings` | array | Docket entry objects — empty if `changed` is false |
+
+### Docket entry fields
+
+| Field | Type | Description |
+|---|---|---|
+| `entry_number` | number \| null | Entry number from the source court system |
+| `filed_at` | string | ISO-8601 filing timestamp |
+| `filing_type` | string \| null | Normalized filing type — `order`, `motion`, `judgment`, `notice`, etc. |
+| `filed_by` | string \| null | Filing party or judge name |
+| `description` | string | Docket entry text |
+| `document_identifier` | string \| null | Document identifier in the source system |
+| `document_identifier_type` | string | Identifier scheme for the source system — e.g. `pacer_doc_id` for PACER courts. See the [field reference](/api-reference/fields) for the full enum. |
+| `external_url` | string \| null | Direct link to the document at the source court portal |
+
+## Notes
+
+**`last_checked` management** — Store `meta.queried_at` from each response and use it as `last_checked` in your next call. This ensures you never miss a filing between queries.
+
+**Document access** — Document URLs link to the source court portal. For PACER federal courts, retrieving the document requires valid PACER credentials. For state and Canadian courts, access requirements vary by portal. DocketLayer provides the link — document access is the caller's responsibility.
+
+**Appellate context** — For appellate cases, the `appellate` field contains panel composition, appeal type, originating court, and oral argument date where available.

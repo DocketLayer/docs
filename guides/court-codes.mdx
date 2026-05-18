@@ -1,0 +1,78 @@
+---
+title: Court codes
+description: How DocketLayer identifies courts, and how to find the court code you need.
+---
+
+DocketLayer uses short court codes to identify courts. Pass the appropriate code in the `court_code` field of your API requests.
+
+The authoritative, real-time coverage list is always available free of charge:
+
+```bash
+curl https://api.docketlayer.ai/v2/status
+```
+
+## US federal courts
+
+Federal court codes follow PACER conventions. Examples:
+
+| Code | Court |
+|---|---|
+| `nysd` | Southern District of New York |
+| `deb` | District of Delaware |
+| `cand` | Northern District of California |
+| `cacd` | Central District of California |
+| `ilnd` | Northern District of Illinois |
+| `txsd` | Southern District of Texas |
+| `nyeb` | Eastern District of New York |
+| `njb` | District of New Jersey Bankruptcy |
+| `ca2` | US Court of Appeals, Second Circuit |
+| `ca9` | US Court of Appeals, Ninth Circuit |
+| `uscfc` | Court of Federal Claims |
+| `cit` | Court of International Trade |
+
+All 94 district courts, 94 bankruptcy courts, and all 13 circuit courts of appeals are covered. The full list is in `/v2/status`.
+
+**PACER code exceptions** — some courts use a DocketLayer code that differs from their native PACER subdomain. The authoritative mapping is in `/v2/status` under each court's `court_code` and `notes` fields.
+
+## US state courts
+
+State court codes are short, lowercase, alphanumeric identifiers. All 50 states are covered. Examples:
+
+| Code | Court |
+|---|---|
+| `nyscef` | New York State Courts Electronic Filing |
+| `fl_circ` | Florida Circuit Courts |
+| `ca_superior` | California Superior Courts |
+| `tx_district` | Texas District Courts |
+
+**Note on Texas:** All 37 Texas state courts carry `coverage: "planned"` status pending commercial access approval from the Texas Office of Court Administration. They appear in `/v2/status` but return 422 on docket queries until the agreement is in place.
+
+The full list of state court codes is in `/v2/status`.
+
+## Canadian courts
+
+| Code | Court |
+|---|---|
+| `fct` | Federal Court of Canada |
+| `fca` | Federal Court of Appeal |
+| `tcc` | Tax Court of Canada |
+| `bc_sc` | Supreme Court of British Columbia |
+| `on_scj` | Superior Court of Justice (Ontario) |
+| `qc_cs` | Cour supérieure du Québec |
+| `ab_kb` | Court of King's Bench of Alberta |
+
+All 3 Canadian federal courts and 22 provincial/territorial superior courts are covered. The full list is in `/v2/status`.
+
+## Finding a court code
+
+Before querying, confirm the court you need is covered and note its exact code:
+
+```bash
+curl -s https://api.docketlayer.ai/v2/status | jq '.courts[] | select(.name | test("Delaware"; "i")) | {code: .court_code, name: .name, coverage: .coverage}'
+```
+
+A court with `"coverage": "full"` is fully supported. A court with `"coverage": "partial"` is reachable but may have known gaps. Querying a court with `"coverage": "planned"` returns 422.
+
+## Case ID format
+
+Each court's expected case ID format is documented in `/v2/status` under `case_id_format.pattern` and `case_id_format.example`. See the [case ID format guide](/guides/case-id-format) for the US federal format convention.

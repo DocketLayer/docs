@@ -1,0 +1,63 @@
+---
+title: Versioning
+description: DocketLayer uses path-based versioning. Breaking changes bump the major version and change the URL path.
+---
+
+DocketLayer uses path-based versioning. The current version is **v2**, served at `https://api.docketlayer.ai/v2/`.
+
+## Version path convention
+
+The major version is encoded in the URL path:
+
+```
+https://api.docketlayer.ai/v2/case
+https://api.docketlayer.ai/v3/case   ← future
+```
+
+Minor and patch changes are backwards-compatible and do not change the path. Breaking changes bump the major version and introduce a new path.
+
+## Compatibility policy
+
+- **Additive changes** (new fields, new optional parameters, new endpoints) are made without a version bump
+- **Breaking changes** (removed fields, changed field types, renamed fields, changed behavior) require a new major version
+- When a new major version ships, the previous version remains accessible for a **minimum of twelve months**
+
+## Current versions
+
+| Version | Path | Status | Sunset date |
+|---|---|---|---|
+| 2.0.0 | `/v2/` | Current | — |
+| 1.0 | `/v1/` | Deprecated | 2027-04-28 |
+
+## v1 deprecation
+
+DocketLayer v1.0 entered formal deprecation on 2026-04-28. The `/v1/` endpoints will continue to serve until **2027-04-28**, after which they will return 410 Gone.
+
+If you are on v1, migrate before the sunset date. See the [migration guide](/guides/migration-v1-to-v2) for field mapping and code changes.
+
+## Breaking changes from v1 to v2
+
+| v1 field | v2 field | Notes |
+|---|---|---|
+| `nature_of_suit` | `nature_of_proceeding` | Renamed for jurisdiction-agnostic clarity |
+| `pacer_doc_id` | `document_identifier` | Generalized; accompanied by `document_identifier_type` |
+| `pacer_link` | `external_url` | Renamed for jurisdiction-agnostic clarity |
+| `related_cases` | `cross_references` | Renamed; each entry now carries a typed `relationship` enum |
+
+All other v2 changes are additive. Existing enum values are unchanged.
+
+## Version discovery
+
+The current API version is always available in the status endpoint response:
+
+```bash
+curl https://api.docketlayer.ai/v2/status
+```
+
+```json
+{
+  "api_version": "2.0.0",
+  "operational_status": "nominal",
+  ...
+}
+```

@@ -1,0 +1,101 @@
+---
+title: Authentication
+description: DocketLayer uses the x402 payment protocol. Payment is authentication.
+---
+
+DocketLayer has no API keys, no accounts, and no onboarding. Authentication is handled entirely through the x402 payment protocol — your agent pays $0.99 in USDC on Solana, and that payment is your authorization to receive the data.
+
+## How x402 works
+
+When your agent calls a DocketLayer endpoint, the flow is:
+
+1. Your agent makes a GET request to `/v2/case` with no payment header
+2. DocketLayer responds with **HTTP 402 Payment Required** containing machine-readable payment details — the price, recipient wallet address, and accepted currency
+3. Your x402 client library reads this response, constructs a $0.99 USDC transaction on Solana, signs it with your wallet's private key, and retries the request with cryptographic proof of payment attached
+4. DocketLayer verifies the payment on-chain and returns the docket data
+
+From your code's perspective, this is a single function call. The x402 library handles the 402 challenge, payment, and retry automatically.
+
+## What you need
+
+<CardGroup cols={2}>
+  <Card title="Solana wallet" icon="wallet">
+    A programmatic wallet with a private key stored as an environment variable
+  </Card>
+  <Card title="USDC balance" icon="dollar-sign">
+    Enough USDC on Solana to cover your expected query volume at $0.99 per query
+  </Card>
+  <Card title="x402 library" icon="code">
+    The x402 client library for Python or JavaScript, configured with your wallet
+  </Card>
+  <Card title="No API key" icon="ban">
+    There are no API keys to request, manage, or rotate
+  </Card>
+</CardGroup>
+
+## x402 client setup
+
+<CodeGroup>
+
+```python Python
+from x402 import PaymentClient
+
+client = PaymentClient(
+    private_key=os.environ["SOLANA_PRIVATE_KEY"],
+    network="solana-mainnet",
+    currency="USDC"
+)
+```
+
+```javascript JavaScript
+import { createPaymentClient } from "x402";
+import { Keypair, Connection } from "@solana/web3.js";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com");
+const wallet = Keypair.fromSecretKey(
+  Buffer.from(process.env.SOLANA_PRIVATE_KEY, "base64")
+);
+
+const client = createPaymentClient({
+  wallet,
+  connection,
+  network: "solana-mainnet",
+  currency: "USDC"
+});
+```
+
+</CodeGroup>
+
+## Security
+
+<Warning>
+Never hardcode your private key in source code or commit it to a repository. Load it exclusively from environment variables or a secrets manager.
+</Warning>
+
+- Use a **dedicated wallet** for your agent — not a personal wallet holding significant funds
+- Fund it with only what the agent needs to operate
+- Monitor your wallet balance — a depleted wallet causes all queries to fail
+- If your private key is ever exposed, generate a new wallet immediately and transfer remaining USDC
+
+## Free endpoint
+
+The `/v2/status` endpoint requires no payment and can be used to check coverage and connectivity without consuming any USDC.
+
+```bash
+curl https://api.docketlayer.ai/v2/status
+```
+
+## Sandbox mode
+
+Any endpoint can be called without payment by enabling sandbox mode. Add `?test=1` to the query string or send the `X-DocketLayer-Test: 1` header. Sandbox responses return fixture data and cost nothing.
+
+```bash
+curl "https://api.docketlayer.ai/v2/case?test=1&case_id=1:24-cv-01234&court_code=nysd"
+```
+
+See the [sandbox guide](/guides/sandbox) for details.
+
+## Further reading
+
+- [Wallet setup guide](/guides/wallet-setup) — creating a Solana wallet and funding it with USDC
+- [x402 protocol documentation](https://x402.org) — the open payment standard DocketLayer uses

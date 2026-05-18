@@ -1,0 +1,94 @@
+---
+title: Coverage
+description: DocketLayer covers all US federal courts, all 50 US states, and Canadian federal and provincial courts at launch.
+---
+
+*Last updated: May 2026*
+
+## Current coverage
+
+DocketLayer v2.0.0 launches with coverage of 2,150 courts across three jurisdictions.
+
+### US federal courts
+
+All US federal courts carry `full` coverage. Most are accessed via CM/ECF (through PACER); the 2nd and 9th Circuit Courts of Appeals use ACMS.
+
+- All 94 US district courts
+- All 94 US bankruptcy courts
+- All 13 circuit courts of appeals (CM/ECF appellate; ACMS for the 2nd and 9th Circuits)
+- Court of Federal Claims (`uscfc`)
+- Court of International Trade (`cit`)
+
+### US state courts
+
+All 50 US states are covered via a combination of dedicated state scrapers. Coverage depth varies by state — courts with dedicated scrapers return richer data than courts using more limited public portals.
+
+Individual court coverage status (`full`, `partial`, or `planned`) is available in real time at no charge:
+
+```bash
+curl https://api.docketlayer.ai/v2/status
+```
+
+Texas (37 courts) is integrated and indexed but carries `planned` status pending commercial access approval from the Texas Office of Court Administration. Texas courts appear in `/v2/status` but return 422 on docket queries until the agreement is in place.
+
+### Canadian courts
+
+**Federal (3 courts):**
+
+| Court code | Court |
+|---|---|
+| `fct` | Federal Court of Canada |
+| `fca` | Federal Court of Appeal |
+| `tcc` | Tax Court of Canada |
+
+**Provincial and territorial superior courts (22 courts):**
+
+| Court code | Court |
+|---|---|
+| `bc_sc` | Supreme Court of British Columbia |
+| `bc_ca` | Court of Appeal for British Columbia |
+| `ab_kb` | Court of King's Bench of Alberta |
+| `ab_ca` | Court of Appeal of Alberta |
+| `on_scj` | Superior Court of Justice (Ontario) |
+| `on_ca` | Court of Appeal for Ontario |
+| `qc_cs` | Cour supérieure du Québec |
+| `qc_ca` | Cour d'appel du Québec |
+| `mb_kb` | Court of King's Bench of Manitoba |
+| `mb_ca` | Court of Appeal of Manitoba |
+| `sk_kb` | Court of King's Bench of Saskatchewan |
+| `sk_ca` | Court of Appeal for Saskatchewan |
+| `ns_sc` | Supreme Court of Nova Scotia |
+| `ns_ca` | Nova Scotia Court of Appeal |
+| `nb_kb` | Court of King's Bench of New Brunswick |
+| `nb_ca` | Court of Appeal of New Brunswick |
+| `nl_sc` | Supreme Court of Newfoundland and Labrador |
+| `nl_ca` | Court of Appeal of Newfoundland and Labrador |
+| `pe_sc` | Supreme Court of Prince Edward Island |
+| `nt_sc` | Supreme Court of the Northwest Territories |
+| `nu_cj` | Nunavut Court of Justice |
+| `yt_sc` | Supreme Court of Yukon |
+
+Ten courts carry `full` coverage: the three federal courts (`fct`, `fca`, `tcc`) and seven provincial courts (`bc_sc`, `bc_ca`, `mb_kb`, `mb_ca`, `nb_kb`, `nb_ca`, `on_ca`). The remaining 13 active courts carry `partial` coverage. Two Quebec courts — `qc_cs` and `qc_ca` — carry `planned` status pending a SOQUIJ commercial agreement and are not available for paid queries.
+
+## What is not covered
+
+The following are outside DocketLayer's scope by design:
+
+- **US Supreme Court** — SCOTUS dockets are public but do not map to the case-level normalized structure DocketLayer uses
+- **US Tax Court** — not on PACER; separate access arrangement required
+- **Court of Appeals for the Armed Forces** — not on PACER
+- **Foreign Intelligence Surveillance Court** — not publicly accessible
+- **Document delivery** — DocketLayer returns docket metadata and entry descriptions; it does not retrieve or serve the underlying court documents
+- **Party-centric queries** — the API is case-centric; there is no endpoint to search by party name across cases
+- **Cross-case search** — no full-text or keyword search across the docket corpus
+- **Non-public state courts** — state courts whose records are not accessible via a public portal are not covered
+
+## Coverage status values
+
+Each court in the system carries one of three coverage values:
+
+| Status | Meaning |
+|---|---|
+| `full` | Scraper is active and the court is fully supported |
+| `partial` | Court is reachable but coverage has known gaps |
+| `planned` | Scraper built or planned; access pending — returns 422 on query |

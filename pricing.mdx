@@ -1,0 +1,62 @@
+---
+title: Pricing
+description: DocketLayer is $0.99 per successful query. No subscriptions, no tiers, no API keys.
+---
+
+DocketLayer charges a flat $0.99 per successful query, paid in USDC on Solana at request time via the x402 protocol. There are no accounts, no subscriptions, no tiers, and no minimum spend.
+
+## Price table
+
+| Endpoint / resource | Price |
+|---|---|
+| `GET /v2/case` | $0.99 per successful response |
+| `GET /v2/monitor` | $0.99 per successful response |
+| `POST /v2/cases/batch` | $0.99 × N queries, paid upfront |
+| `GET /v2/wallet/keys` | $0.99 per call |
+| `POST /v2/wallet/keys` | $0.99 per call |
+| `GET /v2/wallet/deliveries` | $0.99 per call |
+| MCP `docketlayer_case_query` | $0.99 per call |
+| MCP `docketlayer_case_monitor` | $0.99 per call |
+| MCP `docketlayer_case_batch` | $0.99 × N queries, paid upfront |
+| MCP `docketlayer_wallet_info` | $0.99 (keys only, default); $1.98 (keys + deliveries) |
+| `GET /v2/status` | Free |
+| MCP `docketlayer_status` | Free |
+| MCP `docketlayer_court_list` | Free |
+| MCP `docketlayer_pricing` | Free |
+| Sandbox requests (`test=1`) | Free |
+
+## Billing principle
+
+**You are never charged for a failed single query.** Payment is captured only on 200 responses. For batch requests, the payment transaction is sized for the full batch upfront (`$0.99 × N queries`). If all cases in a batch fail, no payment is settled; if some fail, the full batch amount is still charged — x402 payments are atomic and cannot be partially refunded.
+
+## What the price does not vary by
+
+- **Context level** — `context=basic` and `context=full` cost the same
+- **Jurisdiction** — US federal, US state, and Canadian courts all cost $0.99
+- **Response size** — A truncated response (see below) costs the same as a full one
+- **Query complexity** — Simple and delta queries cost the same
+
+## Truncated responses
+
+When `context=full` returns a response that would exceed 2MB, DocketLayer trims `docket_history` to fit. The response includes a `meta.truncated: true` flag and a `truncation_details` object. Truncated responses are billable — the query succeeded, data was delivered.
+
+## Payment mechanics
+
+Payment flows through the x402 protocol. On your first request to a paid endpoint:
+
+1. DocketLayer returns HTTP 402 with machine-readable payment details — recipient address, amount, currency
+2. Your x402 client constructs a $0.99 USDC transaction on Solana, signs it, and retries with proof attached
+3. DocketLayer verifies on-chain and returns the data
+
+Your code does not handle this directly. The x402 client library manages the 402 challenge, transaction construction, and retry automatically.
+
+## Estimating costs
+
+| Daily queries | Monthly cost |
+|---|---|
+| 10 | ~$30 |
+| 100 | ~$300 |
+| 1,000 | ~$3,000 |
+| 10,000 | ~$30,000 |
+
+Fund your wallet with enough USDC to cover expected volume. A depleted wallet causes all paid queries to fail with 402. See the [wallet setup guide](/guides/wallet-setup) for funding instructions.

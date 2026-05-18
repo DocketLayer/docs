@@ -1,0 +1,106 @@
+---
+title: Changelog
+description: All notable changes to DocketLayer, documented by version.
+---
+
+All notable changes to DocketLayer are documented here. DocketLayer follows semantic versioning — major.minor.patch.
+
+## 2.0.1 — May 2026
+
+**Oklahoma and West Virginia state court coverage**
+
+<AccordionGroup>
+
+<Accordion title="What's new in 2.0.1">
+
+### Added
+
+- **Oklahoma state courts** — 80 courts now live: 77 county district courts plus the Supreme Court of Oklahoma, Court of Civil Appeals, and Court of Criminal Appeals. Served via OSCN (oscn.net). Coverage: `full`.
+- **West Virginia state courts** — 57 courts now live: 55 county circuit courts plus the Intermediate Court of Appeals of West Virginia and the Supreme Court of Appeals of West Virginia. Served via WVPASS (wvpass.courtswva.com). Coverage: `partial` (live validation of scraped selectors in progress).
+- **Texas courts set to planned** — 37 Texas state courts are indexed in the registry but carry `planned` status pending commercial access approval from the Texas Office of Court Administration. They appear in `/v2/status` and return 422 on docket queries until the agreement is in place.
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## 2.0.0 — April 2026
+
+**Major release — all endpoints move to `/v2/`**
+
+<AccordionGroup>
+
+<Accordion title="What's new in 2.0.0">
+
+### Added
+
+- **Batch endpoint** — `POST /v2/cases/batch` queries up to 50 cases in a single call; payment covers all, charge is per successful case
+- **Wallet keys** — `GET /v2/wallet/keys` and `POST /v2/wallet/keys` for provisioning and rotating HMAC-SHA256 callback signing keys
+- **Wallet deliveries** — `GET /v2/wallet/deliveries` returns paginated callback delivery history with status, attempt count, and response codes
+- **MCP server** — `POST /v2/mcp` exposes all endpoints as tools for Claude and any MCP-compatible agent (MCP Streamable HTTP transport, protocol version 2025-11-25)
+- **`context` parameter** — `GET /v2/case` accepts `basic` (default) or `full`; `full` adds complete party list with attorneys, cross-references, and full docket history
+- **`language` parameter** — `en` or `fr` for bilingual jurisdictions; Canada coverage launches with this parameter already wired
+- **`filing_types` filter** — comma-separated string to filter the delta block by filing type
+- **`change_count` and `latest_activity_at`** — `GET /v2/monitor` now returns the count of new filings and the timestamp of the most recent one
+- **`meta` block** — all responses include a structured `meta` object with `request_id`, `queried_at`, `query_cost_usd`, `coverage_status`, `cache_age_seconds`, `context_delivered`, `language_delivered`, `truncated`, and `sandbox`
+- **Sandbox mode** — `?test=1` or `X-DocketLayer-Test: 1` returns fixture data on any endpoint with no payment required
+- **`X-DocketLayer-Tag` header** — arbitrary tag echoed back in `meta.tag` for caller-side request correlation
+- **`jurisdiction_country`** — courts are labeled `US` or `CA`; Canadian federal and provincial courts launch in the registry at v2.0.0
+- **Quebec courts built, valve closed** — `qc_cs` (Cour supérieure du Québec) and `qc_ca` (Cour d'appel du Québec) are in the registry with scrapers built but carry `planned` status pending a SOQUIJ commercial agreement. They appear in `/v2/status` but return 422 on docket queries.
+
+### Changed
+
+- All endpoint paths move from `/v1/` to `/v2/`
+- `GET /v2/case` — new filings are now returned inside a `delta` block rather than at the top level; `delta` is only present when `last_checked` is supplied
+- `GET /v2/case` — `filing_types` is now a comma-separated string, not a JSON array
+- `GET /v2/monitor` — `last_checked` is now required (previously optional)
+- Error responses now include a `meta` block with `request_id` and `queried_at`
+
+### Deprecated
+
+- `/v1/` endpoints are deprecated as of this release. Sunset date: 2027-04-28.
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## 0.1.0 — April 2026
+
+**Initial release**
+
+<AccordionGroup>
+
+<Accordion title="What's included in 0.1.0">
+
+- Agent-native pay-per-query API for court docket monitoring
+- Three endpoints: `/v1/case`, `/v1/monitor`, `/v1/status`
+- x402 payment protocol with USDC on Solana — no API keys, no accounts
+- Change detection against normalized PACER cache with `last_checked` timestamp
+- Initial coverage — nine highest-volume federal district and bankruptcy courts
+- Cloudflare Workers hosting with global edge delivery
+- Per-wallet rate limiting — 60 requests per minute
+- Async webhook delivery via `callback_url`
+- Filing type filtering via `document_types`
+- Automated court health monitoring and status reporting via `/v1/status`
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+*Future entries will be added above this line in the format:*
+
+```
+## version — date
+
+### Added — new features or endpoints
+### Changed — changes to existing functionality
+### Fixed — bug fixes
+### Deprecated — features being phased out
+### Removed — features removed in this version
+### Security — security fixes or credential rotation events
+```

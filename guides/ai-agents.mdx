@@ -1,0 +1,119 @@
+---
+title: Using DocketLayer with AI agents
+description: How DocketLayer's design fits AI agent workflows — payment as authentication, structured JSON, and MCP native support.
+---
+
+DocketLayer is designed for AI agents. Every design decision reflects how agents operate: no account setup, payment-as-authentication, predictable JSON structure, and a built-in MCP server so agents can call it natively without writing HTTP client code.
+
+## Why agents need court data
+
+AI agents operating in legal, financial, compliance, and insurance workflows need to know what is happening in court — when a motion is filed, when a judgment is entered, when a case is closed. Human attorneys monitor court dockets manually. Agents can do this continuously, at scale, across large portfolios.
+
+DocketLayer's change detection model maps directly to how agents work: an agent checks a case, stores a timestamp, and on its next run queries only for what changed since then.
+
+## Payment as authentication
+
+Agents need to act autonomously — they cannot be interrupted to complete a sign-up flow or wait for an API key to be provisioned. DocketLayer has no accounts and no API keys. A funded Solana wallet is the only prerequisite. The x402 protocol handles payment inline with the request. From the agent's perspective:
+
+1. Call the endpoint
+2. The x402 client library handles the 402 challenge and payment automatically
+3. Receive the data
+
+No human intervention required at any point. The agent can be deployed and begin querying immediately.
+
+## The MCP server
+
+For agents built on Claude, Cursor, or any MCP-compatible host, DocketLayer exposes a remote MCP server at `https://api.docketlayer.ai/v2/mcp`. Connect it once and the agent can call DocketLayer tools natively in natural language — no HTTP client code required.
+
+See the [MCP server guide](/guides/mcp-server) for configuration and the [MCP endpoint reference](/api-reference/mcp) for the full tool list.
+
+## The monitoring pattern
+
+The canonical agent pattern for court monitoring:
+
+```python
+import time
+from x402 import PaymentClient
+
+client = PaymentClient(
+    private_key=os.environ["SOLANA_PRIVATE_KEY"],
+    network="solana-mainnet",
+    currency="USDC"
+)
+
+def run_monitoring_cycle(portfolio, last_checked_map):
+    for case in portfolio:
+        key = (case["case_id"], case["court_code"])
+        result = client.get(
+            "https://api.docketlayer.ai/v2/case",
+            params={
+                "case_id": case["case_id"],
+                "court_code": case["court_code"],
+                "last_checked": last_checked_map.get(key)
+            }
+        ).json()
+
+        last_checked_map[key] = result["meta"]["queried_at"]
+
+        if result.get("delta", {}).get("changed"):
+            handle_new_filings(case, result["delta"]["new_filings"])
+```
+
+Key properties:
+- `last_checked` uses the server's `queried_at` timestamp — no clock skew, no missed filings
+- Failed queries (500, 503, 429) are not charged — retry safely
+- `delta.changed: false` means no new cost for quiet cases beyond the $0.99 query fee
+
+## Callbacks for event-driven agents
+
+If your agent runs on a schedule and you want to decouple monitoring from processing, use `callback_url`. Your agent makes a query and your endpoint receives a signed push delivery when the result is ready. The agent does not have to wait or poll.
+
+```python
+result = client.get(
+    "https://api.docketlayer.ai/v2/case",
+    params={
+        "case_id": "1:24-cv-01234",
+        "court_code": "nysd",
+        "last_checked": last_checked,
+        "callback_url": "https://yourapp.com/webhooks/docketlayer"
+    }
+).json()
+# Synchronous result available immediately
+# Signed copy also pushed to your callback URL asynchronously
+```
+
+See the [callbacks guide](/guides/callbacks) for payload format and signature verification.
+
+## Batch queries for large portfolios
+
+Agents monitoring large case portfolios should use `POST /v2/cases/batch`. Up to 50 cases per call, one x402 payment covers the full batch. The payment transaction must be sized for `$0.99 × N queries`.
+
+```python
+result = client.post(
+    "https://api.docketlayer.ai/v2/cases/batch",
+    json={
+        "queries": [
+            {"case_id": c["case_id"], "court_code": c["court_code"], "last_checked": last_checked_map.get((c["case_id"], c["court_code"]))}
+            for c in portfolio
+        ]
+    }
+).json()
+
+for r in result["results"]:
+    if r["status"] == "success" and r["response"].get("delta", {}).get("changed"):
+        handle_new_filings(r, r["response"]["delta"]["new_filings"])
+```
+
+## Stop conditions
+
+An agent monitoring a closed case will keep paying $0.99 per cycle with no useful return. Build stop conditions:
+
+```python
+def should_continue_monitoring(result):
+    case = result.get("case", {})
+    if case.get("status") in ("closed", "dismissed", "discontinued"):
+        return False
+    return True
+```
+
+Check `case.status` on every query and remove resolved cases from the portfolio.

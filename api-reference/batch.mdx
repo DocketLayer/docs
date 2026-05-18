@@ -1,0 +1,132 @@
+---
+title: POST /v2/cases/batch
+description: Query up to 50 cases in a single call. Costs $0.99 \u00d7 N cases, paid upfront in a single transaction.
+---
+
+## Overview
+
+`POST /v2/cases/batch` runs up to 50 case queries in a single HTTP call. One x402 payment covers the entire batch. The payment transaction must be sized for the full batch: `$0.99 \u00d7 N queries`.
+
+**Base URL:** `https://api.docketlayer.ai`
+
+**Price:** $0.99 \u00d7 number of queries in the batch
+
+**Sandbox:** Add `?test=1` or `X-DocketLayer-Test: 1` \u2014 returns fixture data for all queries, no charge
+
+## Request
+
+`Content-Type: application/json`
+
+```json
+{
+  "queries": [
+    {
+      "case_id": "1:24-cv-01234",
+      "court_code": "nysd",
+      "last_checked": "2026-01-01T00:00:00Z",
+      "context": "basic"
+    },
+    {
+      "case_id": "1:22-bk-11068",
+      "court_code": "deb",
+      "last_checked": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Query object fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `case_id` | string | Yes | Case identifier |
+| `court_code` | string | Yes | Court identifier |
+| `last_checked` | string | No | ISO-8601 timestamp. When supplied, result includes a `delta` block. |
+| `context` | string | No | `basic` (default) or `full` |
+| `language` | string | No | `en` or `fr` |
+| `filing_types` | string | No | Comma-separated filing types to filter the delta |
+
+**Maximum batch size:** 50 queries. Requests exceeding 50 return 413.
+
+## Response
+
+```json
+{
+  "meta": {
+    "request_id": "req_01jt7y4kx0",
+    "queried_at": "2026-04-29T12:00:00Z",
+    "batch_size": 2,
+    "successful": 2,
+    "failed": 0,
+    "total_cost_usd": 1.98,
+    "sandbox": false,
+    "tag": null
+  },
+  "results": [
+    {
+      "case_id": "1:24-cv-01234",
+      "court_code": "nysd",
+      "status": "success",
+      "response": {
+        "meta": { "...same as GET /v2/case..." },
+        "case_id": "1:24-cv-01234",
+        "court_code": "nysd",
+        "case": { "...case fields..." },
+        "delta": { "...delta fields if last_checked supplied..." }
+      }
+    },
+    {
+      "case_id": "1:22-bk-11068",
+      "court_code": "deb",
+      "status": "success",
+      "response": { "..." }
+    }
+  ]
+}
+```
+
+### Meta fields
+
+| Field | Type | Description |
+|---|---|---|
+| `batch_size` | number | Total number of queries submitted |
+| `successful` | number | Number of queries that returned data |
+| `failed` | number | Number of queries that returned errors |
+| `total_cost_usd` | number | Total charge \u2014 `batch_size` \u00d7 $0.99 |
+
+### Result object
+
+Each entry in `results` has:
+
+| Field | Type | Description |
+|---|---|---|
+| `case_id` | string | The case_id from your query |
+| `court_code` | string | The court_code from your query |
+| `status` | string | `success` or `error` |
+| `response` | object | Full case response (same structure as `GET /v2/case`) \u2014 present when `status` is `success` |
+| `error` | object | Error details \u2014 present when `status` is `error` |
+
+### Error result
+
+```json
+{
+  "case_id": "9:99-cv-99999",
+  "court_code": "nysd",
+  "status": "error",
+  "error": {
+    "code": "case_not_found",
+    "message": "Case '9:99-cv-99999' not found in court 'nysd'.",
+    "documentation_url": "https://docketlayer.ai/reference/errors#case_not_found"
+  }
+}
+```
+
+## Notes
+
+**Payment** \u2014 A single x402 payment covers the batch. The payment transaction must be sized for the full batch (`batch_size \u00d7 $0.99`). If all cases fail, no payment is settled. If some cases fail, the full batch amount is still settled \u2014 x402 payments are atomic and cannot be partially refunded.
+
+**Ordering** \u2014 Results are returned in the same order as your `queries` array.
+
+**Callbacks** \u2014 The batch endpoint does not support `callback_url` per-query. Callers needing async callback delivery should use `GET /v2/case` directly.
+
+**Rate limiting** \u2014 Rate limit is checked once at the batch level. A single batch counts as one request against the per-minute limit, but each successful case counts toward the per-day limit.

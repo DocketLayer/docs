@@ -1,0 +1,121 @@
+---
+title: Monitoring loop
+description: Build an agent that monitors court dockets continuously and alerts on new filings.
+---
+
+This guide shows how to build a Python agent that monitors a portfolio of court cases, pays per query automatically, and sends alerts when new filings appear.
+
+## The pattern
+
+```
+For each case in portfolio:
+  → Query DocketLayer ($0.99)
+  → If changed: alert + update last_checked
+  → If unchanged: update last_checked
+  → Wait for next cycle
+```
+
+## Full example
+
+```python
+import os
+import time
+import smtplib
+from datetime import datetime, timezone
+from email.mime.text import MIMEText
+from x402 import PaymentClient
+
+# Initialize the x402 client once at startup
+client = PaymentClient(
+    private_key=os.environ["SOLANA_PRIVATE_KEY"],
+    network="solana-mainnet",
+    currency="USDC"
+)
+
+# Define your monitoring portfolio
+CASES = [
+    {"case_id": "1:24-cv-01234", "court_code": "nysd"},
+    {"case_id": "1:22-bk-11068", "court_code": "deb"},
+    {"case_id": "5:20-cv-03010", "court_code": "cand"},
+]
+
+def query_case(case_id, court_code, last_checked):
+    response = client.get(
+        "https://api.docketlayer.ai/v2/case",
+        params={
+            "case_id": case_id,
+            "court_code": court_code,
+            "last_checked": last_checked
+        }
+    )
+    response.raise_for_status()
+    return response.json()
+
+def send_alert(case_id, filings):
+    summary = f"Case {case_id} has {len(filings)} new filing(s):\n\n"
+    for f in filings:
+        summary += f"  {f['filing_type'].title()}: {f['description']}\n"
+        summary += f"  Filed: {f['filed_at']} by {f['filed_by']}\n\n"
+
+    msg = MIMEText(summary)
+    msg["Subject"] = f"DocketLayer alert — new activity on {case_id}"
+    msg["From"] = os.environ["ALERT_FROM_EMAIL"]
+    msg["To"] = os.environ["ALERT_TO_EMAIL"]
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(os.environ["ALERT_FROM_EMAIL"], os.environ["ALERT_EMAIL_PASSWORD"])
+        server.send_message(msg)
+
+def run_cycle(last_checked_map):
+    for case in CASES:
+        key = (case["case_id"], case["court_code"])
+        last_checked = last_checked_map.get(key, datetime.now(timezone.utc).isoformat())
+        result = query_case(case["case_id"], case["court_code"], last_checked)
+        # Always advance last_checked using the server's queried_at timestamp
+        last_checked_map[key] = result["meta"]["queried_at"]
+        if result.get("delta", {}).get("changed"):
+            send_alert(case["case_id"], result["delta"]["new_filings"])
+            print(f"Alert sent: {case['case_id']}")
+        else:
+            print(f"No changes: {case['case_id']}")
+
+last_checked_map = {}
+
+while True:
+    print(f"Cycle started at {datetime.now(timezone.utc).isoformat()}")
+    run_cycle(last_checked_map)
+    time.sleep(3600)
+```
+
+## Environment variables
+
+```bash
+SOLANA_PRIVATE_KEY=your_base64_encoded_private_key
+ALERT_FROM_EMAIL=your@gmail.com
+ALERT_EMAIL_PASSWORD=your_gmail_app_password
+ALERT_TO_EMAIL=recipient@yourdomain.com
+```
+
+## Stop conditions
+
+<Warning>
+Build stop conditions into your agent. An agent monitoring a closed case will continue querying and paying $0.99 per cycle indefinitely. Check for case closure status and implement logic to remove cases from your portfolio when they are resolved.
+</Warning>
+
+```python
+def should_continue_monitoring(result):
+    case = result.get("case", {})
+    if case.get("status") in ("closed", "dismissed", "discontinued"):
+        return False
+    return True
+```
+
+## Deploying for passive monitoring
+
+Running the script on your laptop requires your machine to stay on. For always-on monitoring, deploy to a cloud platform:
+
+- **Railway** (railway.app) — simple Python deployment, same platform as DocketLayer's normalization service
+- **Render** (render.com) — background worker hosting with a free tier
+- **Fly.io** (fly.io) — lightweight and inexpensive for small scripts
+
+On any platform, set your environment variables through the platform's secrets management — never include them in your deployed code.

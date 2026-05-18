@@ -1,0 +1,135 @@
+---
+title: x402 payment protocol
+description: How DocketLayer uses x402 — the HTTP payment protocol — to make payment and authentication the same thing.
+---
+
+DocketLayer uses x402 as its sole authentication mechanism. There are no API keys, no accounts, and no onboarding. A valid payment is authorization. An invalid or missing payment is a rejection.
+
+## The 402 flow
+
+When your agent calls a paid DocketLayer endpoint without a payment header:
+
+1. DocketLayer returns **HTTP 402 Payment Required** with a machine-readable `X-Payment-Requirements` header describing exactly what is needed — the amount, the recipient address, the network, and the currency
+2. Your x402 client library reads these requirements, constructs a $0.99 USDC transaction on Solana, signs it with your wallet's private key, and retries the original request with an `x402-payment` header containing cryptographic proof of payment
+3. DocketLayer verifies the payment and returns the data
+
+From your code's perspective, this is a single function call. The x402 library handles the 402 challenge, payment construction, and retry automatically.
+
+## Payment requirements header
+
+The `X-Payment-Requirements` header on a 402 response contains:
+
+```json
+{
+  "x402Version": 1,
+  "scheme": "exact",
+  "network": "solana-mainnet",
+  "maxAmountRequired": "990000",
+  "resource": "https://api.docketlayer.ai/v2",
+  "description": "DocketLayer court docket query",
+  "mimeType": "application/json",
+  "payTo": "<DocketLayer receiver wallet address>",
+  "maxTimeoutSeconds": 300,
+  "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "outputSchema": null,
+  "extra": null
+}
+```
+
+`maxAmountRequired` is in USDC lamports — 990,000 = $0.99. `asset` is the USDC mint address on Solana mainnet.
+
+## Payment header format
+
+A valid paid request includes:
+
+```
+x402-payment: <base64-encoded JSON>
+```
+
+Where the JSON payload is:
+
+```json
+{
+  "x402Version": 1,
+  "scheme": "exact",
+  "network": "solana-mainnet",
+  "payload": {
+    "transaction": "<base64-encoded signed Solana transaction>",
+    "nonce": "<timestamp string>"
+  }
+}
+```
+
+The signed transaction is a Solana legacy transaction containing a SPL Token transfer of exactly 990,000 lamports of USDC to DocketLayer's receiver address. Your x402 client library constructs this — you do not build it manually.
+
+## Replay protection
+
+Each payment transaction signature is claimed atomically within a 5-minute window. The first request using a given transaction signature succeeds. Any subsequent request using the same signature within 5 minutes is rejected as a replay. Your x402 library handles this by constructing a fresh transaction on each call.
+
+## Settlement
+
+DocketLayer verifies payment by simulating the transaction against the Solana RPC (`simulateTransaction` with `sigVerify: true`) before performing any query work. Once the query completes successfully, the transaction is broadcast on-chain (`sendRawTransaction`). Settlement is fire-and-forget — the synchronous response is not held for on-chain confirmation.
+
+## Wallet identity
+
+The fee payer extracted from the verified transaction is your wallet address for that request. DocketLayer uses this address for:
+
+- Per-wallet rate limiting
+- Scoping wallet resources (`/v2/wallet/keys`, `/v2/wallet/deliveries`)
+
+There is no registration step. The first time a wallet address appears in a verified payment, it is implicitly registered.
+
+## x402 client setup
+
+<CodeGroup>
+
+```python Python
+import os
+from x402 import PaymentClient
+
+client = PaymentClient(
+    private_key=os.environ["SOLANA_PRIVATE_KEY"],
+    network="solana-mainnet",
+    currency="USDC"
+)
+
+result = client.get(
+    "https://api.docketlayer.ai/v2/case",
+    params={"case_id": "1:24-cv-01234", "court_code": "nysd"}
+).json()
+```
+
+```javascript JavaScript
+import { createPaymentClient } from "x402";
+import { Keypair, Connection } from "@solana/web3.js";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com");
+const wallet = Keypair.fromSecretKey(
+  Buffer.from(process.env.SOLANA_PRIVATE_KEY, "base64")
+);
+
+const client = createPaymentClient({
+  wallet,
+  connection,
+  network: "solana-mainnet",
+  currency: "USDC"
+});
+
+const data = await client.fetch(
+  "https://api.docketlayer.ai/v2/case?case_id=1:24-cv-01234&court_code=nysd"
+).then(r => r.json());
+```
+
+</CodeGroup>
+
+## Free endpoints
+
+The following require no payment and never trigger a 402 response:
+
+- `GET /v2/status` — coverage and system health
+- MCP tools: `docketlayer_status`, `docketlayer_court_list`, `docketlayer_pricing`
+
+## Further reading
+
+- [Wallet setup guide](/guides/wallet-setup) — creating a Solana wallet and funding it with USDC
+- [x402 protocol specification](https://x402.org) — the open standard DocketLayer implements

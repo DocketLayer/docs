@@ -1,0 +1,120 @@
+---
+title: GET /v2/wallet/deliveries
+description: Retrieve callback delivery history for your wallet — status, attempt count, and response codes.
+---
+
+## Overview
+
+`GET /v2/wallet/deliveries` returns a paginated list of callback delivery records for your wallet address. Use it to monitor delivery health, investigate failures, and audit which cases triggered callbacks.
+
+**Base URL:** `https://api.docketlayer.ai`
+
+**Price:** $0.99 per call
+
+## Request
+
+### Parameters
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `limit` | number | No | Records to return. Min: 1, max: 200. Default: 50. |
+| `cursor` | string | No | Pagination cursor from `next_cursor` in a prior response. |
+| `status` | string | No | Filter by delivery status: `succeeded`, `failed`, or `retrying`. |
+| `since` | string | No | ISO-8601 timestamp — return only deliveries with `last_attempt_at` after this time. |
+
+### Example request
+
+```bash
+curl "https://api.docketlayer.ai/v2/wallet/deliveries?limit=25&status=failed"
+# x402 payment required — use your x402 client library
+```
+
+## Response
+
+```json
+{
+  "meta": {
+    "request_id": "req_01jt7y4kx0",
+    "queried_at": "2026-04-29T12:00:00Z",
+    "query_cost_usd": 0.99,
+    "sandbox": false
+  },
+  "wallet": "YourSolanaPublicKey...",
+  "deliveries": [
+    {
+      "delivery_id": "del_abc123",
+      "case_id": "1:24-cv-01234",
+      "court_code": "nysd",
+      "callback_url": "https://yourapp.com/webhooks/docketlayer",
+      "status": "succeeded",
+      "attempts": 1,
+      "first_attempt_at": "2026-04-29T10:00:00Z",
+      "last_attempt_at": "2026-04-29T10:00:03Z",
+      "last_response_code": 200,
+      "idempotency_key": "idem_xyz789"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### Delivery object fields
+
+| Field | Type | Description |
+|---|---|---|
+| `delivery_id` | string | Unique delivery identifier |
+| `case_id` | string \| null | Case that triggered this delivery |
+| `court_code` | string \| null | Court of the triggering case |
+| `callback_url` | string | The URL DocketLayer posted to |
+| `status` | string | `succeeded`, `failed`, or `retrying` |
+| `attempts` | number | Total delivery attempts made |
+| `first_attempt_at` | string | ISO-8601 timestamp of first attempt |
+| `last_attempt_at` | string | ISO-8601 timestamp of most recent attempt |
+| `last_response_code` | number \| null | HTTP status code from your endpoint's last response |
+| `idempotency_key` | string | Stable key for deduplication — present on all retry attempts |
+
+## Delivery status values
+
+| Status | Meaning |
+|---|---|
+| `retrying` | Delivery has failed at least once and will be retried |
+| `succeeded` | Your endpoint returned 2xx |
+| `failed` | Maximum retry attempts exhausted without a 2xx response |
+
+## Retry schedule
+
+DocketLayer retries failed deliveries up to 7 times with exponential backoff:
+
+| Attempt | Delay after previous |
+|---|---|
+| 2 | 3 minutes |
+| 3 | 9 minutes |
+| 4 | 27 minutes |
+| 5 | ~1.4 hours |
+| 6 | ~4 hours |
+| 7 | ~12 hours |
+
+After 7 attempts with no 2xx response, the delivery moves to `failed` and no further attempts are made.
+
+## Pagination
+
+When there are more results than `limit`, the response includes `next_cursor`. Pass it as `cursor` in your next request to retrieve the next page.
+
+```python
+cursor = None
+while True:
+    params = {"limit": 50}
+    if cursor:
+        params["cursor"] = cursor
+
+    page = client.get(
+        "https://api.docketlayer.ai/v2/wallet/deliveries",
+        params=params
+    ).json()
+
+    process(page["deliveries"])
+
+    cursor = page.get("next_cursor")
+    if not cursor:
+        break
+```

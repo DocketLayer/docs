@@ -1,0 +1,129 @@
+---
+title: Basic vs. full context
+description: The context parameter controls how much case data DocketLayer returns. Both levels cost the same.
+---
+
+The `context` parameter on `GET /v2/case` and `POST /v2/cases/batch` controls the depth of case data returned. Both levels cost $0.99 — `full` is not more expensive than `basic`.
+
+## Basic context (default)
+
+`context=basic` returns the case header, status, primary parties, and the delta block (if `last_checked` was supplied). It is the default when `context` is omitted.
+
+```json
+{
+  "case": {
+    "case_number": "1:24-cv-01234",
+    "case_name": "Smith v. Jones",
+    "case_type": "civil",
+    "court_code": "nysd",
+    "court_name": "Southern District of New York",
+    "jurisdiction_country": "US",
+    "status": "open",
+    "assigned_judge": "Hon. Sarah Johnson",
+    "nature_of_proceeding": "Contract: Other",
+    "cause": "28 USC 1332",
+    "jury_demand": "both",
+    "date_filed": "2024-05-10T00:00:00-04:00",
+    "date_terminated": null,
+    "language": "en",
+    "case_name_secondary": null,
+    "case_name_secondary_language": null,
+    "primary_parties": [
+      { "name": "John Smith", "type": "plaintiff" },
+      { "name": "Acme Corp.", "type": "defendant" }
+    ],
+    "appellate": null
+  }
+}
+```
+
+`primary_parties` contains only the parties flagged as primary — typically the lead plaintiff and lead defendant. It does not include attorneys, co-plaintiffs, or intervenors.
+
+## Full context
+
+`context=full` extends basic context with three additional fields:
+
+- **`parties`** — complete party list with attorneys
+- **`cross_references`** — related, consolidated, or transferred cases
+- **`docket_history`** — every docket entry on record
+
+```json
+{
+  "case": {
+    "...all basic fields...",
+    "parties": [
+      {
+        "name": "John Smith",
+        "type": "plaintiff",
+        "role_in_case": "lead plaintiff",
+        "date_joined": "2024-05-10T00:00:00Z",
+        "date_terminated": null,
+        "attorneys": [
+          {
+            "name": "Jane Doe",
+            "firm": "Doe & Associates LLP",
+            "role": "lead counsel",
+            "date_action": "2024-05-10T00:00:00Z"
+          }
+        ]
+      }
+    ],
+    "cross_references": [
+      {
+        "relationship": "consolidated_with",
+        "case_id": "1:24-cv-01235",
+        "court_code": "nysd",
+        "relationship_note": null
+      }
+    ],
+    "docket_history": [
+      {
+        "entry_number": 1,
+        "filed_at": "2024-05-10T09:00:00Z",
+        "filing_type": "complaint",
+        "filed_by": "John Smith",
+        "description": "Complaint filed",
+        "document_identifier": "0001",
+        "document_identifier_type": "pacer_doc_id",
+        "external_url": "https://ecf.nysd.uscourts.gov/doc1/..."
+      }
+    ]
+  }
+}
+```
+
+### cross_references relationship values
+
+| Value | Meaning |
+|---|---|
+| `consolidated_with` | Cases are consolidated |
+| `appealed_from` | This case appeals from the referenced case |
+| `appealed_to` | The referenced case is the appeal of this one |
+| `related_to` | Courts designated these cases as related |
+| `member_case_of_mdl` | This case is a member of the referenced MDL |
+| `same_party` | Same parties appear in both cases |
+| `other` | Relationship noted but does not fit an enum value |
+
+## The 2MB ceiling
+
+For very large cases, `context=full` may trigger response truncation. When the response would exceed 2MB, `docket_history` is trimmed to the largest number of entries that fit. The response is still returned and still billed — truncation is noted in the meta block.
+
+```json
+"meta": {
+  "truncated": true,
+  "truncation_details": {
+    "omitted_fields": ["case.docket_history"],
+    "total_entries": 4821,
+    "entries_included": 500,
+    "continuation_hint": "Query with context=basic plus filing_types to retrieve specific subsets of the docket."
+  }
+}
+```
+
+`context=basic` responses are never truncated.
+
+## When to use each
+
+**Use `context=basic`** for monitoring loops. You need to know if anything changed, and if so, what the new filings are. Basic context plus the delta block is all you need.
+
+**Use `context=full`** when you need a complete picture: all parties with attorneys, the full docket history, and cross-references. Appropriate for initial case intake, legal review workflows, and any task where completeness matters more than payload size.

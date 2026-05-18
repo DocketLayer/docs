@@ -1,0 +1,114 @@
+---
+title: Errors
+description: DocketLayer error codes and how to handle them. You are never charged for a failed query.
+---
+
+DocketLayer uses standard HTTP status codes. The core principle: **you are never charged for a failed query.** Charges apply only to successful 200 responses.
+
+## Error format
+
+All errors return JSON with this structure:
+
+```json
+{
+  "meta": {
+    "request_id": "req_01jt7y4kx0",
+    "queried_at": "2026-04-29T12:00:00Z"
+  },
+  "error": {
+    "code": "court_not_covered",
+    "message": "Court code 'xyz' is not recognized.",
+    "documentation_url": "https://docketlayer.ai/reference/errors#court_not_covered"
+  }
+}
+```
+
+## Error codes
+
+| Code | HTTP | Meaning | Charged |
+|---|---|---|---|
+| `200` | 200 | Successful query | Yes |
+| `payment_missing` | 402 | No x402-payment header present | No |
+| `payment_invalid` | 402 | Payment verification failed | No |
+| `missing_required_parameter` | 400 | Required field absent | No |
+| `invalid_parameter_format` | 400 | Field present but malformed | No |
+| `invalid_case_id` | 400 | case_id format doesn't match court | No |
+| `invalid_context` | 400 | context not basic or full | No |
+| `invalid_language` | 400 | language not en or fr | No |
+| `last_checked_in_future` | 400 | last_checked is a future timestamp | No |
+| `invalid_batch_request` | 400 | Batch body missing or malformed | No |
+| `case_not_found` | 404 | Case not in covered courts | No |
+| `endpoint_not_found` | 404 | Unknown endpoint | No |
+| `court_not_covered` | 422 | Court not recognized or planned-only | No |
+| `rate_limit_exceeded` | 429 | Per-wallet rate limit hit | No |
+| `batch_too_large` | 413 | Batch exceeds 50 queries | No |
+| `court_unavailable` | 503 | Source court system temporarily unreachable | No |
+| `query_timeout` | 504 | Query timed out | No |
+| `internal_error` | 500 | Internal server error | No |
+
+## Handling errors
+
+```python
+response = client.get("https://api.docketlayer.ai/v2/case", params={...})
+
+if response.status_code == 200:
+    data = response.json()
+    # Process docket data
+
+elif response.status_code == 402:
+    # Payment failed
+    # Check: wallet balance, x402 configuration, Solana network status
+
+elif response.status_code == 404:
+    err = response.json()["error"]
+    if err["code"] == "case_not_found":
+        # The case was not found — DocketLayer has enqueued it for scraping
+        # Retry in a few minutes
+        pass
+
+elif response.status_code == 422:
+    # Court not covered
+    # Check /v2/status for current coverage list
+
+elif response.status_code == 429:
+    # Rate limited — 60 req/min, 10,000 req/day per wallet
+    retry_after = response.json()["error"].get("details", {}).get("retry_after")
+    time.sleep(retry_after or 60)
+
+elif response.status_code == 503:
+    # Upstream court system temporarily unavailable
+    # Retry with exponential backoff — check /v2/status for current system state
+```
+
+## Rate limits
+
+| Limit | Value |
+|---|---|
+| Requests per minute | 60 per wallet |
+| Requests per day | 10,000 per wallet |
+
+When a rate limit is exceeded, the response body includes a `retry_after` value in seconds inside `error.details`. For portfolios requiring more than 10,000 daily queries, distribute load across multiple funded wallets.
+
+## Case not found — auto-scrape
+
+When a 404 `case_not_found` is returned, DocketLayer automatically enqueues the case for its next scrape cycle. Retrying the same query a few minutes later will typically succeed once the normalization service has populated the case.
+
+## Source court availability
+
+DocketLayer's data depends on source court availability. During maintenance windows, affected courts return 503 responses. The `/v2/status` endpoint reflects known maintenance windows and is the best source for current system state.
+
+```bash
+curl https://api.docketlayer.ai/v2/status
+```
+
+## Common mistakes
+
+**Wrong court code** — Use the court code exactly as listed in `/v2/status`. Common examples: `nysd`, `deb`, `cand`. Do not include `.uscourts.gov` or any other suffix.
+
+**Wrong case ID format** — Each court's expected case ID format is in `/v2/status` under `case_id_format`. For US federal courts the pattern is `division:year-type-number` — e.g. `1:24-cv-01234`. See the [case ID format guide](/guides/case-id-format).
+
+**Depleted wallet** — A $0 USDC balance causes all queries to return 402. Monitor your wallet balance and refund before it runs dry.
+
+**Uncovered court** — Querying a court not in the current coverage list returns 422. Always check `/v2/status` first.
+
+**Future last_checked** — A `last_checked` timestamp later than the current time returns 400. This can happen if your system clock is ahead of UTC.

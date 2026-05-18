@@ -1,0 +1,142 @@
+---
+title: Wallet keys
+description: Retrieve and rotate the signing key used to authenticate DocketLayer callback deliveries.
+---
+
+## Overview
+
+DocketLayer's callback system signs outbound webhook payloads with an HMAC-SHA256 key tied to your wallet address. The wallet keys endpoints let you retrieve your current key state and rotate to a new key when needed.
+
+Both endpoints require x402 payment and identify you by your Solana wallet address.
+
+**Base URL:** `https://api.docketlayer.ai`
+
+**Price:** $0.99 per call
+
+---
+
+## GET /v2/wallet/keys
+
+Returns your current signing key ID and, if a rotation has occurred, the previous key ID.
+
+### Request
+
+```bash
+curl "https://api.docketlayer.ai/v2/wallet/keys"
+# x402 payment required — use your x402 client library
+```
+
+No parameters required.
+
+### Response
+
+```json
+{
+  "meta": {
+    "request_id": "req_01jt7y4kx0",
+    "queried_at": "2026-04-29T12:00:00Z",
+    "query_cost_usd": 0.99,
+    "sandbox": false
+  },
+  "wallet": "YourSolanaPublicKey...",
+  "current_key_id": "key_a1b2c3d4",
+  "current_key_created_at": "2026-04-01T00:00:00Z",
+  "previous_key_id": null
+}
+```
+
+### Response fields
+
+| Field | Type | Description |
+|---|---|---|
+| `wallet` | string | Your Solana wallet address |
+| `current_key_id` | string | Active signing key identifier |
+| `current_key_created_at` | string | When the current key was issued |
+| `previous_key_id` | string \| null | Previous key ID during rotation window; null otherwise |
+
+**First call** — If you have never called this endpoint before, DocketLayer automatically provisions a new key and returns it. The secret itself is only visible at rotation time (see POST below).
+
+---
+
+## POST /v2/wallet/keys
+
+Rotates your signing key. Generates a new key and returns the secret. The previous key remains valid for 30 minutes to allow in-flight deliveries to complete.
+
+### Request
+
+```bash
+# POST with no body — x402 payment required
+curl -X POST "https://api.docketlayer.ai/v2/wallet/keys"
+```
+
+No body required.
+
+### Response
+
+```json
+{
+  "meta": {
+    "request_id": "req_01jt7y4kx0",
+    "queried_at": "2026-04-29T12:00:00Z",
+    "query_cost_usd": 0.99,
+    "sandbox": false
+  },
+  "wallet": "YourSolanaPublicKey...",
+  "new_key_id": "key_e5f6g7h8",
+  "new_key_secret": "a1b2c3d4...64hexchars",
+  "new_key_created_at": "2026-04-29T12:00:00Z",
+  "previous_key_id": "key_a1b2c3d4",
+  "previous_key_valid_until": "2026-04-29T12:30:00Z"
+}
+```
+
+### Response fields
+
+| Field | Type | Description |
+|---|---|---|
+| `new_key_id` | string | New signing key identifier |
+| `new_key_secret` | string | 64-character hex secret — **store this immediately** |
+| `new_key_created_at` | string | When the new key was issued |
+| `previous_key_id` | string \| null | The key being rotated out |
+| `previous_key_valid_until` | string \| null | Previous key expiry — 30 minutes after rotation |
+
+<Warning>
+`new_key_secret` is only returned once, at rotation time. DocketLayer does not store it in retrievable form. Store it immediately in your secrets manager.
+</Warning>
+
+## Using the signing key
+
+DocketLayer includes an `X-DocketLayer-Signature` header on all callback deliveries, formatted as:
+
+```
+X-DocketLayer-Signature: sha256=<hex_hmac>
+```
+
+Verify it server-side:
+
+```python
+import hmac, hashlib
+
+def verify_callback(secret: str, raw_body: bytes, signature_header: str) -> bool:
+    expected = "sha256=" + hmac.new(
+        secret.encode(),
+        raw_body,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature_header)
+```
+
+```javascript
+import crypto from "crypto";
+
+function verifyCallback(secret, rawBody, signatureHeader) {
+  const expected = "sha256=" + crypto
+    .createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("hex");
+  return crypto.timingSafeEqual(
+    Buffer.from(expected),
+    Buffer.from(signatureHeader)
+  );
+}
+```

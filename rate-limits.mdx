@@ -1,0 +1,69 @@
+---
+title: Rate limits
+description: DocketLayer rate limits are applied per wallet address. You are never charged for a rate-limited request.
+---
+
+Rate limits are enforced per wallet address via Cloudflare Durable Objects. They apply to all paid endpoints. You are never charged for a rate-limited request.
+
+## Limits
+
+| Window | Limit |
+|---|---|
+| Per minute | 60 requests per wallet |
+| Per day | 10,000 requests per wallet |
+
+Both limits apply independently. Hitting either one returns a 429.
+
+## Exempt requests
+
+The following are not counted against rate limits:
+
+- `GET /v2/status`
+- `OPTIONS` (preflight)
+- Sandbox requests (`?test=1` or `X-DocketLayer-Test: 1`)
+
+## 429 response
+
+When a rate limit is exceeded:
+
+```json
+{
+  "meta": {
+    "request_id": "req_01jt7y4kx0",
+    "queried_at": "2026-04-29T12:00:00Z"
+  },
+  "error": {
+    "code": "rate_limit_exceeded",
+    "message": "Rate limit exceeded. Retry after 47 seconds.",
+    "documentation_url": "https://docketlayer.ai/rate-limits",
+    "details": {
+      "retry_after": 47
+    }
+  }
+}
+```
+
+`retry_after` is seconds until the limit resets. Back off and retry after that interval.
+
+```python
+elif response.status_code == 429:
+    retry_after = response.json()["error"]["details"]["retry_after"]
+    time.sleep(retry_after)
+```
+
+## Batch counting
+
+For `POST /v2/cases/batch`, rate limits are applied at the case level, not the request level:
+
+- One batch request counts as **one** against the per-minute limit
+- Each **successful case** in the batch counts as **one** against the per-day limit
+
+A batch of 50 cases can consume up to 50 units of your 10,000/day allowance in a single call.
+
+## High-volume portfolios
+
+For portfolios that need more than 10,000 queries per day, distribute load across multiple funded wallets. Each wallet has its own independent rate limit. There is no mechanism to pool or increase the per-wallet limit.
+
+## Rate limits and the MCP server
+
+MCP tool calls to `POST /v2/mcp` are subject to the same per-wallet rate limits as direct REST calls. Each paid tool call counts as one request.

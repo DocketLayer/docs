@@ -1,0 +1,60 @@
+---
+title: FAQ
+description: Frequently asked questions about DocketLayer.
+---
+
+<AccordionGroup>
+
+<Accordion title="What is DocketLayer?">
+DocketLayer is a pay-per-query API that gives AI agents programmatic access to court docket monitoring across US federal courts, all 50 US states, and Canadian federal and provincial courts. Agents submit a case identifier and court code, pay $0.99 in USDC via the x402 protocol, and receive structured docket data with change detection built in.
+</Accordion>
+
+<Accordion title="Who is DocketLayer for?">
+Developers building AI agents that operate in legal, financial, or compliance workflows — litigation monitoring, debt collection, bankruptcy tracking, insurance, and similar use cases where knowing the moment something is filed in court matters.
+</Accordion>
+
+<Accordion title="Do I need a PACER account?">
+No. DocketLayer handles PACER access internally for US federal courts. For state and Canadian courts, DocketLayer accesses the relevant public portals directly. You need a Solana wallet funded with USDC and x402 configured for your agent. Document URLs in responses link to the source court — retrieving the actual document may require credentials at the source, but monitoring docket activity does not.
+</Accordion>
+
+<Accordion title="How much does it cost?">
+$0.99 per query. Flat rate, no tiers, no subscriptions. For single-endpoint queries, failed requests are never charged. For batch requests (`POST /v2/cases/batch`), the payment covers the full batch upfront — if some cases fail within a batch, the full batch amount is still charged.
+</Accordion>
+
+<Accordion title="How do I authenticate?">
+Payment is authentication. Include a valid x402 payment header with $0.99 in USDC on Solana. No API keys, no accounts, no onboarding required. See the [authentication guide](/authentication) for setup details.
+</Accordion>
+
+<Accordion title="How current is the data?">
+DocketLayer refreshes court data continuously. Most courts have a polling interval of 1 hour; select high-priority courts refresh every 15 minutes. The `meta.cache_age_seconds` field in each response tells you exactly how fresh the data is for the specific case you queried. Data is served from DocketLayer's normalized cache — not queried from source courts in real time.
+</Accordion>
+
+<Accordion title="Which courts are covered?">
+DocketLayer covers all US federal district, bankruptcy, and appellate courts; all 50 US states; and 25 Canadian courts (3 federal, 22 provincial and territorial). Call `/v2/status` for the complete real-time list with coverage status per court. See the [coverage page](/coverage-roadmap) for the full breakdown and what is not covered.
+</Accordion>
+
+<Accordion title="What is the /v2/monitor endpoint for?">
+`/v2/monitor` returns a lightweight change indicator — `changed: true` or `changed: false`, a count of new filings, and the timestamp of the latest one. It is designed for agents running high-frequency monitoring loops where minimizing response payload matters. Use `/v2/case` when you need the full filing details.
+</Accordion>
+
+<Accordion title="What happens if PACER is down?">
+DocketLayer returns a 503 with an estimated recovery time where available. You are not charged. The `/v2/status` endpoint reflects known maintenance windows.
+</Accordion>
+
+<Accordion title="Is there a rate limit?">
+60 requests per minute and 10,000 requests per day per wallet address. If exceeded, the response includes a `retry_after` field. For portfolios requiring more than 10,000 daily queries, distribute load across multiple funded wallets.
+</Accordion>
+
+<Accordion title="Can I use a callback URL?">
+Yes. Include a `callback_url` in your `GET /v2/case` request and DocketLayer will push a signed copy of the result to that URL asynchronously, in addition to the synchronous response. See the [callbacks guide](/guides/callbacks) for details.
+</Accordion>
+
+<Accordion title="How do I report an issue or request court coverage?">
+Email [help@docketlayer.com](mailto:help@docketlayer.com).
+</Accordion>
+
+<Accordion title="Should I stop monitoring a case once it is closed?">
+Yes. An agent monitoring a closed case will continue querying and paying $0.99 per cycle with no useful return. Build stop conditions into your monitoring logic — check `case.status` on each response and remove resolved cases from your portfolio.
+</Accordion>
+
+</AccordionGroup>

@@ -1,0 +1,172 @@
+---
+title: POST /v2/mcp
+description: DocketLayer's built-in MCP remote server. Connect any MCP-compatible agent directly — no package installation required.
+---
+
+## Overview
+
+`POST /v2/mcp` is DocketLayer's remote MCP server. It implements the MCP Streamable HTTP transport (protocol version `2025-11-25`) over JSON-RPC 2.0. Any MCP-compatible client can connect directly using the endpoint URL.
+
+**Endpoint:** `https://api.docketlayer.ai/v2/mcp`
+
+**Transport:** MCP Streamable HTTP — POST only. GET returns 405.
+
+**Price:** Free tools are free. Paid tools cost $0.99 per call; batch costs $0.99 × N cases. Payment is passed as a `payment_tx` argument (or `payment_tx_keys`/`payment_tx_deliveries` for `docketlayer_wallet_info`) — see below.
+
+## Client configuration
+
+### Claude Code
+
+```json
+{
+  "mcpServers": {
+    "docketlayer": {
+      "url": "https://api.docketlayer.ai/v2/mcp",
+      "transport": "http"
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "docketlayer": {
+      "url": "https://api.docketlayer.ai/v2/mcp",
+      "transport": "http"
+    }
+  }
+}
+```
+
+No API key or wallet address is required at configuration time. Payment is handled per call via `payment_tx`.
+
+---
+
+## Tools
+
+### Free tools
+
+These tools require no payment and no wallet.
+
+---
+
+**`docketlayer_status`**
+
+Returns DocketLayer's current operational status, covered courts, planned coverage, and API version. Equivalent to `GET /v2/status`.
+
+No parameters.
+
+---
+
+**`docketlayer_court_list`**
+
+Lists all courts DocketLayer covers or plans to cover, with court codes, names, jurisdictions, and case ID format patterns.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `include_planned` | boolean | No | Include planned courts. Default: true. |
+
+---
+
+**`docketlayer_pricing`**
+
+Returns the pricing model — per-query cost, free endpoints, and payment protocol.
+
+No parameters.
+
+---
+
+### Paid tools
+
+Paid tools require a `payment_tx` argument: a base64-encoded signed Solana USDC transaction for $0.99 sent to DocketLayer's settlement address.
+
+If `payment_tx` is omitted, the tool returns structured payment instructions — the recipient address and required amount — which an AI assistant can use to guide the user through payment.
+
+---
+
+**`docketlayer_case_query`**
+
+Queries a case for current context and recent docket activity. Equivalent to `GET /v2/case`. Costs $0.99.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `case_id` | string | Yes | Case identifier — e.g. `1:24-cv-01234` |
+| `court_code` | string | Yes | Court identifier — e.g. `nysd` |
+| `last_checked` | string | No | ISO-8601 timestamp. When supplied, response includes a `delta` block. |
+| `context` | string | No | `basic` (default) or `full` |
+| `language` | string | No | `en` or `fr` |
+| `filing_types` | string | No | Comma-separated filing types to filter the delta |
+| `payment_tx` | string | No | Base64-encoded signed Solana transaction. Omit to receive payment instructions. |
+
+---
+
+**`docketlayer_case_monitor`**
+
+Lightweight change check. Returns whether a case has new filings since `last_checked`. Equivalent to `GET /v2/monitor`. Costs $0.99.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `case_id` | string | Yes | Case identifier |
+| `court_code` | string | Yes | Court identifier |
+| `last_checked` | string | Yes | ISO-8601 timestamp with timezone offset |
+| `payment_tx` | string | No | Base64-encoded signed Solana transaction |
+
+---
+
+**`docketlayer_case_batch`**
+
+Queries up to 50 cases in a single call. Costs $0.99 × N cases — the payment transaction must cover the full batch. Equivalent to `POST /v2/cases/batch`.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `queries` | array | Yes | Array of query objects — same fields as `docketlayer_case_query` |
+| `payment_tx` | string | No | Base64-encoded signed Solana transaction sized for the full batch (`$0.99 × N`). Omit to receive payment instructions with estimated cost. |
+
+---
+
+**`docketlayer_wallet_info`**
+
+Returns the wallet's signing key state and optionally recent callback delivery history. Keys lookup costs $0.99. Adding delivery history costs an additional $0.99 (requires a second payment transaction). Default is keys only.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `include_deliveries` | boolean | No | Include callback delivery history. Requires `payment_tx_deliveries`. Default: false. |
+| `deliveries_limit` | number | No | Max delivery records to return. Default: 50. Max: 200. |
+| `payment_tx_keys` | string | No | Base64-encoded signed Solana transaction for the keys lookup ($0.99). Omit to receive payment instructions. |
+| `payment_tx_deliveries` | string | No | Base64-encoded signed Solana transaction for the deliveries lookup ($0.99). Required only when `include_deliveries` is true. |
+
+---
+
+## Request format
+
+The endpoint accepts standard JSON-RPC 2.0 requests:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "docketlayer_case_query",
+    "arguments": {
+      "case_id": "1:24-cv-01234",
+      "court_code": "nysd",
+      "last_checked": "2026-01-01T00:00:00Z",
+      "payment_tx": "base64encodedtx..."
+    }
+  }
+}
+```
+
+## Responses
+
+| HTTP status | Meaning |
+|---|---|
+| 200 | Successful tool call — body contains JSON-RPC result |
+| 204 | `notifications/initialized` acknowledged — no body |
+| 405 | GET or other non-POST method rejected |
+
+Tool-level errors (payment missing, case not found, rate limited) are returned as JSON-RPC errors within a 200 response, not as HTTP error codes.

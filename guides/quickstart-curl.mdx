@@ -1,0 +1,62 @@
+---
+title: curl quickstart
+description: Query DocketLayer from the command line using curl and sandbox mode.
+---
+
+curl cannot handle the x402 payment flow automatically — it does not have an x402 client library. However, you can use **sandbox mode** to test DocketLayer's response structure from the command line without spending USDC.
+
+## Check coverage (free, no payment)
+
+```bash
+curl https://api.docketlayer.ai/v2/status
+```
+
+Find the `court_code` for the court you want to query in the `courts` array.
+
+## Query in sandbox mode
+
+Sandbox mode returns fixture data with no payment required. Add `?test=1` to any endpoint.
+
+```bash
+# Basic context — case header and primary parties
+curl "https://api.docketlayer.ai/v2/case?test=1&case_id=1:24-cv-01234&court_code=nysd"
+
+# With last_checked — includes delta block
+curl "https://api.docketlayer.ai/v2/case?test=1&case_id=1:24-cv-01234&court_code=nysd&last_checked=2026-01-01T00:00:00Z"
+
+# Full context
+curl "https://api.docketlayer.ai/v2/case?test=1&case_id=1:24-cv-01234&court_code=nysd&context=full"
+
+# Monitor endpoint
+curl "https://api.docketlayer.ai/v2/monitor?test=1&case_id=1:24-cv-01234&court_code=nysd&last_checked=2026-01-01T00:00:00Z"
+```
+
+## Batch in sandbox mode
+
+```bash
+curl -X POST "https://api.docketlayer.ai/v2/cases/batch?test=1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "queries": [
+      {"case_id": "1:24-cv-01234", "court_code": "nysd"},
+      {"case_id": "1:22-bk-11068", "court_code": "deb"}
+    ]
+  }'
+```
+
+## Paid queries
+
+For live paid queries, use the Python or JavaScript x402 client library — they handle the 402 challenge, transaction signing, and retry automatically. curl cannot replicate this flow without manual construction of the `x402-payment` header.
+
+See the [Python quickstart](/guides/quickstart-python) or [JavaScript quickstart](/guides/quickstart-js) for live query examples.
+
+## Pretty-printing responses
+
+Pipe responses through `jq` for readable output:
+
+```bash
+curl -s "https://api.docketlayer.ai/v2/case?test=1&case_id=1:24-cv-01234&court_code=nysd" | jq .
+
+# Extract specific fields
+curl -s "https://api.docketlayer.ai/v2/status" | jq '.courts[] | {code: .court_code, name: .name, coverage: .coverage}'
+```

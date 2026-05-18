@@ -1,0 +1,22 @@
+name: Mintlify preview
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Mintlify CLI
+        run: npm install -g mintlify
+
+      - name: Validate mint.json
+        run: mintlify validate
+
+      - name: Check for broken links
+        run: mintlify broken-links

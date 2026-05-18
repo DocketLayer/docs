@@ -1,0 +1,55 @@
+---
+title: Document identifiers
+description: How DocketLayer identifies court documents across different court systems, and what the document_identifier fields mean.
+---
+
+Each docket entry in a DocketLayer response may reference a court document. Because DocketLayer covers courts running different case management systems, document identifiers are not uniform across jurisdictions. The `document_identifier` and `document_identifier_type` fields together give you everything you need to locate a document in its source system.
+
+## The fields
+
+```json
+{
+  "entry_number": 42,
+  "document_identifier": "0042",
+  "document_identifier_type": "pacer_doc_id",
+  "external_url": "https://ecf.nysd.uscourts.gov/doc1/..."
+}
+```
+
+| Field | Description |
+|---|---|
+| `document_identifier` | The identifier string in the source system |
+| `document_identifier_type` | Which system's identifier scheme this is |
+| `external_url` | Direct link to the document in the source system — may be null |
+
+## document_identifier_type values
+
+| Value | System | Notes |
+|---|---|---|
+| `pacer_doc_id` | PACER / CM/ECF | Numeric string. Accessing the document requires PACER credentials. |
+| `acms_document_guid` | ACMS (2nd and 9th Circuits) | UUID format. ACMS is the appellate system for those circuits. |
+| `fct_recorded_entry_id` | Federal Court of Canada | Numeric string from the FCT case management system. |
+| `tyler_envelope_id` | Tyler Odyssey (state courts) | Identifier for the filing envelope in Tyler's system. |
+| `tyler_event_id` | Tyler Odyssey (state courts) | Identifier for a specific event within an envelope. |
+| `tyler_document_id` | Tyler Odyssey (state courts) | Identifier for a specific document within an event. |
+| `none` | Any | No document identifier available for this entry. |
+
+## Accessing documents
+
+DocketLayer returns docket metadata and document links. It does not retrieve, store, or serve the underlying document files.
+
+**For PACER documents:** The `external_url` links directly to the document in PACER. Retrieving it requires valid PACER credentials. Visit [pacer.gov](https://pacer.gov) to register or manage your credentials.
+
+**For state court documents:** Access depends on the court's public portal policy. Some state courts make documents freely available; others require a login or a fee. The `external_url` points to the document in the source system — whether you can retrieve it without credentials depends on that court's rules.
+
+**For Federal Court of Canada:** Documents are available through the FCT's public portal at no charge.
+
+## When document_identifier is null
+
+Some docket entries — particularly procedural notes, status entries, and certain sealed or restricted filings — have no associated document. `document_identifier` is null and `document_identifier_type` is `none` in these cases. `external_url` is also null.
+
+## Entry numbers
+
+`entry_number` is the sequential number assigned by the source court's case management system. For PACER courts, this corresponds to the docket entry number visible in the PACER interface. It is not the same as the `document_identifier`, though for many PACER entries they are numerically similar.
+
+`entry_number` may be null for court systems that do not assign sequential entry numbers.

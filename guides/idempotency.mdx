@@ -1,0 +1,95 @@
+---
+title: Idempotency and retry handling
+description: How to safely retry failed requests and handle duplicate callback deliveries.
+---
+
+## Retrying failed requests
+
+DocketLayer charges only on successful 200 responses. A request that fails — network timeout, 500, 503, 429 — incurs no charge. It is safe to retry any non-200 response.
+
+### What to retry
+
+| Status | Safe to retry | Notes |
+|---|---|---|
+| 429 | Yes | Wait for `error.details.retry_after` seconds |
+| 500 | Yes | Unexpected server error — retry with backoff |
+| 502 | Yes | Upstream court error — retry later |
+| 503 | Yes | Court temporarily unavailable — retry later |
+| 504 | Yes | Query timed out — retry later |
+| 402 | No | Payment failed — fix wallet or x402 config first |
+| 400 | No | Malformed request — fix parameters |
+| 404 | Conditionally | Case not found — DocketLayer has enqueued it; retry in a few minutes |
+| 422 | No | Court not covered — check `/v2/status` |
+
+### Retry pattern
+
+```python
+import time
+
+def query_with_retry(client, params, max_retries=3):
+    for attempt in range(max_retries):
+        response = client.get(
+            "https://api.docketlayer.ai/v2/case",
+            params=params
+        )
+
+        if response.status_code == 200:
+            return response.json()
+
+        if response.status_code == 429:
+            retry_after = response.json()["error"]["details"].get("retry_after", 60)
+            time.sleep(retry_after)
+            continue
+
+        if response.status_code in (500, 502, 503, 504):
+            time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+            continue
+
+        # Non-retriable error
+        response.raise_for_status()
+
+    raise RuntimeError(f"Request failed after {max_retries} attempts")
+```
+
+## Payment replay protection
+
+DocketLayer's x402 implementation includes replay protection. Each payment transaction is claimed atomically within a 5-minute window — the same transaction signature cannot be used twice. Your x402 client library handles this automatically: if a request fails after payment is constructed, the library creates a fresh transaction on retry rather than reusing the signed bytes from the failed attempt.
+
+You do not need to manage this yourself. Do not manually reuse a signed Solana transaction across retries.
+
+## Idempotency keys on callbacks
+
+Callback deliveries use `Idempotency-Key` — a stable UUIDv4 that is the same on every retry attempt for a given delivery. If DocketLayer retries a delivery because your endpoint was slow or returned a non-2xx response, you may receive the same payload more than once.
+
+Store processed `Idempotency-Key` values and skip duplicates:
+
+```python
+processed_keys = set()  # Use a database in production
+
+@app.route("/webhooks/docketlayer", methods=["POST"])
+def receive_callback():
+    idempotency_key = request.headers.get("Idempotency-Key")
+
+    if idempotency_key in processed_keys:
+        return "", 200  # Already processed — acknowledge and skip
+
+    # Verify signature, process payload...
+    handle_docket_event(request.json["payload"])
+
+    processed_keys.add(idempotency_key)
+    return "", 200
+```
+
+In production, store processed keys in a database with a TTL that exceeds DocketLayer's retry window (~54 hours).
+
+## Case not found — auto-enqueue
+
+When `GET /v2/case` returns 404 with `case_not_found`, DocketLayer automatically enqueues the case for its next scrape cycle. Retrying the same query a few minutes later will typically succeed once the normalization service has populated the case. You are not charged for the 404.
+
+```python
+if response.status_code == 404:
+    err = response.json()["error"]
+    if err["code"] == "case_not_found":
+        time.sleep(300)  # Wait 5 minutes
+        return query_with_retry(client, params)  # Retry once
+```

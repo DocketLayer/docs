@@ -1,0 +1,132 @@
+---
+title: Migration guide — v1 to v2
+description: What changed between DocketLayer v1 and v2, and how to update your integration.
+---
+
+DocketLayer v2 launched on 2026-04-28. v1 endpoints remain live at `/v1/` until **2027-04-28**, after which they will return 410 Gone.
+
+## What changed
+
+### URL path
+
+All endpoints move from `/v1/` to `/v2/`.
+
+```
+# v1
+https://api.docketlayer.ai/v1/case
+
+# v2
+https://api.docketlayer.ai/v2/case
+```
+
+### Renamed fields
+
+Four fields were renamed for jurisdiction-agnostic clarity as coverage expanded beyond US federal courts:
+
+| v1 field | v2 field | Notes |
+|---|---|---|
+| `nature_of_suit` | `nature_of_proceeding` | Same data, broader name |
+| `pacer_doc_id` | `document_identifier` | Generalized; accompanied by `document_identifier_type` |
+| `pacer_link` | `external_url` | Renamed for non-PACER courts |
+| `related_cases` | `cross_references` | Each entry now carries a typed `relationship` enum |
+
+All other field names are unchanged.
+
+### New fields — additive
+
+v2 adds fields that v1 did not have. These are all additive — existing v1 response consumers will ignore them without breaking.
+
+**On `GET /v2/case`:**
+- `context` parameter (`basic` or `full`) — replaces the flat response structure
+- `language` parameter and `language_delivered` response field
+- `filing_types` filter parameter
+- `meta` block: `context_delivered`, `language_delivered`, `truncated`, `sandbox`, `tag`
+- `case.case_name_secondary`, `case.case_name_secondary_language`
+- `case.jurisdiction_country`
+- `case.language`
+- `delta.change_count`, `delta.new_filings[].document_identifier_type`
+
+**New endpoints (no v1 equivalent):**
+- `POST /v2/cases/batch`
+- `GET /v2/wallet/keys`
+- `POST /v2/wallet/keys`
+- `GET /v2/wallet/deliveries`
+- `POST /v2/mcp`
+
+**On `GET /v2/monitor`:**
+- `last_checked` is now **required** (was optional in v1)
+- Response now includes `change_count` and `latest_activity_at`
+
+### Delta block restructuring
+
+In v1, new filings were returned at the top level of the response. In v2, they are inside a `delta` block and the block is only present when `last_checked` is supplied.
+
+```json
+// v1
+{
+  "changed": true,
+  "new_filings": [...]
+}
+
+// v2
+{
+  "delta": {
+    "changed": true,
+    "since": "2026-01-01T00:00:00Z",
+    "change_count": 2,
+    "new_filings": [...]
+  }
+}
+```
+
+### filing_types parameter
+
+In v1, `filing_types` accepted a JSON array. In v2, it is a comma-separated string.
+
+```
+# v1
+filing_types=["order","judgment"]
+
+# v2
+filing_types=order,judgment
+```
+
+## Migration checklist
+
+<Steps>
+
+<Step title="Update the base URL">
+Change all references from `https://api.docketlayer.ai/v1/` to `https://api.docketlayer.ai/v2/`.
+</Step>
+
+<Step title="Rename fields in your response handling">
+Update field references:
+- `nature_of_suit` → `nature_of_proceeding`
+- `pacer_doc_id` → `document_identifier`
+- `pacer_link` → `external_url`
+- `related_cases` → `cross_references`
+</Step>
+
+<Step title="Update delta access">
+Move from top-level `new_filings` to `delta.new_filings`. Check `delta.changed` before accessing `delta.new_filings`.
+</Step>
+
+<Step title="Update filing_types format">
+If you use `filing_types`, change from JSON array to comma-separated string.
+</Step>
+
+<Step title="Make last_checked required on /v2/monitor">
+`last_checked` is required on `/v2/monitor`. If you were calling it without `last_checked`, supply it.
+</Step>
+
+<Step title="Test in sandbox">
+Add `?test=1` to verify your updated integration against the v2 response structure before going live.
+</Step>
+
+</Steps>
+
+## Coexistence period
+
+v1 and v2 can be used simultaneously during the coexistence period (until 2027-04-28). There is no need to migrate everything at once — you can update endpoint by endpoint.
+
+If you have questions about the migration, email [help@docketlayer.com](mailto:help@docketlayer.com).

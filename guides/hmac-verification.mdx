@@ -1,0 +1,158 @@
+---
+title: HMAC signature verification
+description: Verify that callback deliveries originate from DocketLayer using HMAC-SHA256 signatures.
+---
+
+Every callback delivery DocketLayer sends is signed with an HMAC-SHA256 key tied to your wallet address. Verifying the signature before processing the payload protects your endpoint from forged or tampered requests.
+
+## How signing works
+
+DocketLayer maintains a per-wallet HMAC key. When a callback delivery is made, DocketLayer computes:
+
+```
+HMAC-SHA256(key_secret, raw_request_body)
+```
+
+The result is sent as the `X-DocketLayer-Signature` header in the format:
+
+```
+X-DocketLayer-Signature: sha256=<hex_digest>
+```
+
+The key ID used is included in `X-DocketLayer-Signature-Key-Id`.
+
+## Retrieving your key
+
+Your HMAC key is provisioned automatically on your first call to `GET /v2/wallet/keys`. The **secret** is only returned when you rotate the key via `POST /v2/wallet/keys` — the GET endpoint returns the key ID only.
+
+To get your initial secret, rotate the key once:
+
+```bash
+# Rotate to receive the secret — store it immediately
+curl -X POST "https://api.docketlayer.ai/v2/wallet/keys"
+```
+
+Response:
+
+```json
+{
+  "new_key_id": "key_e5f6g7h8",
+  "new_key_secret": "a1b2c3d4...64hexchars",
+  "new_key_created_at": "2026-04-29T12:00:00Z",
+  "previous_key_id": "key_a1b2c3d4",
+  "previous_key_valid_until": "2026-04-29T12:30:00Z"
+}
+```
+
+<Warning>
+`new_key_secret` is returned exactly once. Store it immediately in your secrets manager. DocketLayer does not store it in retrievable form.
+</Warning>
+
+## Verifying signatures
+
+<CodeGroup>
+
+```python Python
+import hmac
+import hashlib
+import time
+
+def verify_docketlayer_callback(
+    secret: str,
+    raw_body: bytes,
+    signature_header: str,
+    timestamp_header: str,
+    max_age_seconds: int = 300
+) -> bool:
+    # Reject stale deliveries to prevent replay attacks
+    try:
+        delivery_time = int(timestamp_header)
+    except (TypeError, ValueError):
+        return False
+    if abs(time.time() - delivery_time) > max_age_seconds:
+        return False
+
+    # Compute expected signature
+    expected = "sha256=" + hmac.new(
+        secret.encode(),
+        raw_body,
+        hashlib.sha256
+    ).hexdigest()
+
+    # Constant-time comparison prevents timing attacks
+    return hmac.compare_digest(expected, signature_header)
+```
+
+```javascript JavaScript
+import crypto from "crypto";
+
+function verifyDocketLayerCallback(
+  secret,
+  rawBody,
+  signatureHeader,
+  timestampHeader,
+  maxAgeSeconds = 300
+) {
+  // Reject stale deliveries
+  const deliveryTime = parseInt(timestampHeader, 10);
+  if (Math.abs(Date.now() / 1000 - deliveryTime) > maxAgeSeconds) {
+    return false;
+  }
+
+  // Compute expected signature
+  const expected = "sha256=" + crypto
+    .createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("hex");
+
+  // Constant-time comparison
+  return crypto.timingSafeEqual(
+    Buffer.from(expected),
+    Buffer.from(signatureHeader)
+  );
+}
+```
+
+</CodeGroup>
+
+Use the raw request body — the bytes exactly as received. Parsing and re-serializing the JSON before verification will produce a different hash and cause verification to fail.
+
+## Key rotation
+
+Rotate your key when the secret may have been exposed. The previous key remains valid for **30 minutes** after rotation to allow in-flight deliveries to complete.
+
+During the rotation window, DocketLayer may sign deliveries with either key. Your verification logic should handle both:
+
+```python
+def verify_with_rotation(current_secret, previous_secret, raw_body, sig_header, ts_header):
+    if verify_docketlayer_callback(current_secret, raw_body, sig_header, ts_header):
+        return True
+    if previous_secret:
+        return verify_docketlayer_callback(previous_secret, raw_body, sig_header, ts_header)
+    return False
+```
+
+The `X-DocketLayer-Signature-Key-Id` header identifies which key signed the delivery, so you can also select the correct secret directly.
+
+## Replay prevention
+
+DocketLayer includes `X-DocketLayer-Timestamp` (Unix seconds) on every delivery. Reject deliveries with a timestamp outside a ±5-minute window. This prevents an attacker who intercepts a valid delivery from replaying it later.
+
+The `Idempotency-Key` header is a stable UUIDv4 unique to each delivery — the same value appears on every retry of a given delivery. Use it to deduplicate: if you process a delivery successfully but respond slowly and DocketLayer retries, your idempotency check prevents double-processing.
+
+## Checking key state
+
+```bash
+curl "https://api.docketlayer.ai/v2/wallet/keys"
+```
+
+```json
+{
+  "wallet": "YourSolanaPublicKey...",
+  "current_key_id": "key_e5f6g7h8",
+  "current_key_created_at": "2026-04-29T12:00:00Z",
+  "previous_key_id": "key_a1b2c3d4"
+}
+```
+
+`previous_key_id` is non-null only during the 30-minute rotation window.

@@ -1,0 +1,171 @@
+---
+title: TypeScript / JavaScript quickstart
+description: Query DocketLayer from TypeScript or JavaScript using the x402 client library.
+---
+
+## Install dependencies
+
+```bash
+npm install x402 @solana/web3.js
+```
+
+## Configure your wallet
+
+```typescript
+import { createPaymentClient } from "x402";
+import { Keypair, Connection } from "@solana/web3.js";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com");
+const wallet = Keypair.fromSecretKey(
+  Buffer.from(process.env.SOLANA_PRIVATE_KEY!, "base64")
+);
+
+const client = createPaymentClient({
+  wallet,
+  connection,
+  network: "solana-mainnet",
+  currency: "USDC"
+});
+```
+
+`SOLANA_PRIVATE_KEY` is your wallet's private key, base64-encoded. See the [wallet setup guide](/guides/wallet-setup) if you do not have one yet.
+
+## Check coverage (free)
+
+```typescript
+const status = await fetch("https://api.docketlayer.ai/v2/status").then(r => r.json());
+for (const court of status.courts) {
+  console.log(`${court.court_code.padEnd(10)} ${court.coverage.padEnd(8)} ${court.name}`);
+}
+```
+
+## First query — no last_checked
+
+```typescript
+const result = await client.fetch(
+  "https://api.docketlayer.ai/v2/case?case_id=1:24-cv-01234&court_code=nysd"
+).then(r => r.json());
+
+const { case: caseData, meta } = result;
+console.log(`${caseData.case_name} — ${caseData.status}`);
+console.log(`Judge: ${caseData.assigned_judge}`);
+
+// Store for next query
+let lastChecked = meta.queried_at;
+```
+
+## Query with delta
+
+```typescript
+const url = new URL("https://api.docketlayer.ai/v2/case");
+url.searchParams.set("case_id", "1:24-cv-01234");
+url.searchParams.set("court_code", "nysd");
+url.searchParams.set("last_checked", lastChecked);
+
+const result = await client.fetch(url.toString()).then(r => r.json());
+lastChecked = result.meta.queried_at;
+
+if (result.delta?.changed) {
+  console.log(`${result.delta.change_count} new filing(s):`);
+  for (const filing of result.delta.new_filings) {
+    console.log(`  [${filing.filing_type}] ${filing.description}`);
+  }
+} else {
+  console.log("No changes");
+}
+```
+
+## Full context
+
+```typescript
+const url = new URL("https://api.docketlayer.ai/v2/case");
+url.searchParams.set("case_id", "1:24-cv-01234");
+url.searchParams.set("court_code", "nysd");
+url.searchParams.set("context", "full");
+
+const result = await client.fetch(url.toString()).then(r => r.json());
+const { case: caseData, meta } = result;
+
+console.log(`${caseData.parties.length} parties`);
+console.log(`${caseData.docket_history.length} docket entries`);
+
+if (meta.truncated) {
+  const td = meta.truncation_details;
+  console.log(`Truncated: ${td.entries_included} of ${td.total_entries} entries returned`);
+}
+```
+
+## Batch query
+
+```typescript
+const result = await client.fetch(
+  "https://api.docketlayer.ai/v2/cases/batch",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      queries: [
+        { case_id: "1:24-cv-01234", court_code: "nysd", last_checked: lastChecked },
+        { case_id: "1:22-bk-11068", court_code: "deb", last_checked: lastChecked }
+      ]
+    })
+  }
+).then(r => r.json());
+
+console.log(`Batch: ${result.meta.successful} succeeded, ${result.meta.failed} failed`);
+console.log(`Total cost: $${result.meta.total_cost_usd.toFixed(2)}`);
+
+for (const r of result.results) {
+  if (r.status === "success") {
+    const changed = r.response.delta?.changed ?? false;
+    console.log(`  ${r.case_id}: ${changed ? "changed" : "no change"}`);
+  } else {
+    console.log(`  ${r.case_id}: error — ${r.error.code}`);
+  }
+}
+```
+
+## Error handling
+
+```typescript
+const response = await client.fetch(url.toString());
+
+if (response.ok) {
+  const data = await response.json();
+  // process data
+
+} else {
+  const error = await response.json().then(b => b.error).catch(() => null);
+
+  switch (response.status) {
+    case 402:
+      console.error("Payment failed:", error?.message);
+      break;
+    case 404:
+      if (error?.code === "case_not_found") {
+        // Case enqueued — retry in a few minutes
+      }
+      break;
+    case 422:
+      console.error("Court not covered — check /v2/status");
+      break;
+    case 429:
+      const retryAfter = error?.details?.retry_after ?? 60;
+      await new Promise(r => setTimeout(r, retryAfter * 1000));
+      break;
+  }
+}
+```
+
+## Sandbox mode
+
+Test without spending USDC:
+
+```typescript
+const result = await fetch(
+  "https://api.docketlayer.ai/v2/case?test=1&case_id=1:24-cv-01234&court_code=nysd"
+).then(r => r.json());
+
+console.assert(result.meta.sandbox === true);
+console.assert(result.meta.query_cost_usd === 0);
+```

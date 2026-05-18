@@ -1,0 +1,135 @@
+---
+title: The delta block and last_checked
+description: How to use last_checked to get only new filings since your last query, and how to manage the timestamp correctly.
+---
+
+The `last_checked` parameter is DocketLayer's change detection mechanism. Supply it on any query and the response includes a `delta` block containing every new filing since that timestamp. Without it, the response contains case context only — no `delta` block is returned.
+
+## How it works
+
+```
+GET /v2/case?case_id=1:24-cv-01234&court_code=nysd&last_checked=2026-01-01T00:00:00Z
+```
+
+If filings have occurred since that timestamp:
+
+```json
+{
+  "meta": {
+    "queried_at": "2026-04-29T12:00:00Z",
+    ...
+  },
+  "delta": {
+    "changed": true,
+    "since": "2026-01-01T00:00:00Z",
+    "change_count": 2,
+    "new_filings": [
+      {
+        "entry_number": 41,
+        "filed_at": "2026-03-15T10:22:00Z",
+        "filing_type": "motion",
+        "filed_by": "Acme Corp.",
+        "description": "Motion for summary judgment",
+        "document_identifier": "0041",
+        "document_identifier_type": "pacer_doc_id",
+        "external_url": "https://ecf.nysd.uscourts.gov/doc1/..."
+      },
+      {
+        "entry_number": 42,
+        "filed_at": "2026-04-11T14:23:00Z",
+        "filing_type": "order",
+        "filed_by": "Hon. Sarah Johnson",
+        "description": "Order granting motion to dismiss",
+        "document_identifier": "0042",
+        "document_identifier_type": "pacer_doc_id",
+        "external_url": "https://ecf.nysd.uscourts.gov/doc1/..."
+      }
+    ]
+  }
+}
+```
+
+If nothing has changed:
+
+```json
+{
+  "delta": {
+    "changed": false,
+    "since": "2026-01-01T00:00:00Z",
+    "change_count": 0,
+    "new_filings": []
+  }
+}
+```
+
+## Managing last_checked correctly
+
+**Always use `meta.queried_at` as your next `last_checked`.** Do not use the current system time or the timestamp of the latest filing.
+
+```python
+result = client.get("https://api.docketlayer.ai/v2/case", params={
+    "case_id": "1:24-cv-01234",
+    "court_code": "nysd",
+    "last_checked": last_checked
+}).json()
+
+# Store the server's timestamp, not your own
+last_checked = result["meta"]["queried_at"]
+```
+
+Using `meta.queried_at` ensures:
+- No gap between queries — you never miss a filing that occurred while your code was running
+- No clock skew — the server's timestamp is authoritative
+- Correct timezone handling — `queried_at` is always ISO-8601 with a timezone offset
+
+## Timestamp format
+
+`last_checked` must be an ISO-8601 timestamp with a timezone offset. A bare date or a timestamp without offset is rejected with 400.
+
+```
+2026-01-01T00:00:00Z          ✓ UTC
+2026-01-01T00:00:00-07:00     ✓ with offset
+2026-01-01                    ✗ rejected
+2026-01-01T00:00:00           ✗ rejected (no offset)
+```
+
+A `last_checked` value in the future is also rejected with 400.
+
+## Filing type filtering
+
+Use `filing_types` to narrow the delta to specific event categories:
+
+```
+GET /v2/case?...&last_checked=...&filing_types=order,judgment
+```
+
+Only `order` and `judgment` entries appear in `new_filings`. Other filings are not returned in the delta, but the case context is always returned in full regardless of the filter.
+
+Common filing type values: `complaint`, `motion`, `order`, `judgment`, `notice`, `stipulation`, `hearing`, `brief`, `subpoena`, `settlement`.
+
+## First query — no last_checked
+
+On your first query for a case, omit `last_checked`. You receive the case context with no delta block. Store `meta.queried_at` and use it as `last_checked` on every subsequent query.
+
+```python
+# First query — no last_checked
+result = client.get("https://api.docketlayer.ai/v2/case", params={
+    "case_id": "1:24-cv-01234",
+    "court_code": "nysd"
+}).json()
+
+# From here on, always pass last_checked
+last_checked = result["meta"]["queried_at"]
+```
+
+## delta vs. docket_history
+
+`delta.new_filings` and `case.docket_history` (in `context=full`) are different things:
+
+| | `delta.new_filings` | `case.docket_history` |
+|---|---|---|
+| **What it contains** | Filings since `last_checked` | All filings on record |
+| **When present** | Only when `last_checked` is supplied | Only when `context=full` |
+| **Filtered by `filing_types`?** | Yes | No |
+
+For a monitoring loop, the delta is what you need. `docket_history` is for initial intake or full review.

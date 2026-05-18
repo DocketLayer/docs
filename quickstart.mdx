@@ -1,0 +1,189 @@
+---
+title: Quickstart
+description: Get your first DocketLayer query running in under 5 minutes.
+---
+
+## Prerequisites
+
+- A Solana wallet funded with USDC — see the [wallet setup guide](/guides/wallet-setup)
+- The x402 client library installed for your language
+- A case identifier and court code for a covered court (US state, federal, or Canadian)
+
+---
+
+## Step 1 — Check coverage
+
+Before querying, confirm the court you need is covered. This endpoint is free and requires no payment.
+
+```bash
+curl https://api.docketlayer.ai/v2/status
+```
+
+Find your `court_code` in the response. If your court shows `"coverage": "full"` you are ready. If your court is not listed, check the [coverage roadmap](/coverage-roadmap).
+
+---
+
+## Step 2 — Try sandbox mode
+
+Before spending USDC, confirm connectivity with a free sandbox query. Add `?test=1` to any endpoint.
+
+```bash
+curl "https://api.docketlayer.ai/v2/case?test=1&case_id=1:24-cv-01234&court_code=nysd"
+```
+
+The response is a fixture — real structure, no real data, no charge.
+
+---
+
+## Step 3 — Make your first paid query
+
+<CodeGroup>
+
+```python Python
+import os
+from x402 import PaymentClient
+
+client = PaymentClient(
+    private_key=os.environ["SOLANA_PRIVATE_KEY"],
+    network="solana-mainnet",
+    currency="USDC"
+)
+
+result = client.get(
+    "https://api.docketlayer.ai/v2/case",
+    params={
+        "case_id": "1:24-cv-01234",
+        "court_code": "nysd",
+        "last_checked": "2026-01-01T00:00:00Z"
+    }
+).json()
+
+if result["delta"]["changed"]:
+    for filing in result["delta"]["new_filings"]:
+        print(f"{filing['filing_type']}: {filing['description']}")
+else:
+    print("No changes")
+```
+
+```javascript JavaScript
+import { createPaymentClient } from "x402";
+import { Keypair, Connection } from "@solana/web3.js";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com");
+const wallet = Keypair.fromSecretKey(
+  Buffer.from(process.env.SOLANA_PRIVATE_KEY, "base64")
+);
+const client = createPaymentClient({ wallet, connection, network: "solana-mainnet", currency: "USDC" });
+
+const url = new URL("https://api.docketlayer.ai/v2/case");
+url.searchParams.set("case_id", "1:24-cv-01234");
+url.searchParams.set("court_code", "nysd");
+url.searchParams.set("last_checked", "2026-01-01T00:00:00Z");
+
+const data = await client.fetch(url.toString()).then(r => r.json());
+console.log(data.delta?.changed ? data.delta.new_filings : "No changes");
+```
+
+```bash curl (sandbox)
+curl "https://api.docketlayer.ai/v2/case?test=1&case_id=1:24-cv-01234&court_code=nysd&last_checked=2026-01-01T00:00:00Z"
+# Use the x402 client library for live paid queries — curl does not handle the 402 flow automatically
+```
+
+</CodeGroup>
+
+---
+
+## Step 4 — Understand the response
+
+A successful response:
+
+```json
+{
+  "meta": {
+    "request_id": "req_01jt7y4kx0",
+    "queried_at": "2026-04-29T12:00:00Z",
+    "query_cost_usd": 0.99,
+    "coverage_status": "full",
+    "cache_age_seconds": 87,
+    "context_delivered": "basic",
+    "language_delivered": "en",
+    "truncated": false,
+    "sandbox": false,
+    "tag": null
+  },
+  "case_id": "1:24-cv-01234",
+  "court_code": "nysd",
+  "case": {
+    "case_number": "1:24-cv-01234",
+    "case_name": "Smith v. Jones",
+    "case_type": "civil",
+    "court_code": "nysd",
+    "court_name": "Southern District of New York",
+    "jurisdiction_country": "US",
+    "status": "open",
+    "assigned_judge": "Hon. Sarah Johnson",
+    "primary_parties": [
+      { "name": "John Smith", "type": "plaintiff" },
+      { "name": "Acme Corp.", "type": "defendant" }
+    ],
+    "appellate": null
+  },
+  "delta": {
+    "changed": true,
+    "since": "2026-01-01T00:00:00Z",
+    "change_count": 1,
+    "new_filings": [
+      {
+        "entry_number": 42,
+        "filed_at": "2026-04-11T14:23:00Z",
+        "filing_type": "order",
+        "filed_by": "Hon. Sarah Johnson",
+        "description": "Order granting motion to dismiss",
+        "document_identifier": "0042",
+        "document_identifier_type": "pacer_doc_id",
+        "external_url": "https://ecf.nysd.uscourts.gov/doc1/..."
+      }
+    ]
+  }
+}
+```
+
+The `delta` block is only present when `last_checked` is supplied. Store `meta.queried_at` and use it as `last_checked` on your next call.
+
+---
+
+## Step 5 — Handle errors
+
+DocketLayer never charges for failed queries.
+
+```python
+if response.status_code == 402:
+    # Payment failed — check wallet balance and x402 configuration
+elif response.status_code == 404:
+    # Case not found — verify case_id format and court_code
+elif response.status_code == 422:
+    # Court not covered — check /v2/status for current coverage
+elif response.status_code == 429:
+    # Rate limited — back off, retry after retry_after interval
+elif response.status_code == 503:
+    # Upstream court system unavailable — retry later, check /v2/status
+```
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Build a monitoring loop" icon="arrows-rotate" href="/guides/monitoring-loop">
+    Run your agent on a schedule
+  </Card>
+  <Card title="Wallet setup" icon="wallet" href="/guides/wallet-setup">
+    Solana wallet and x402 configuration in detail
+  </Card>
+  <Card title="API reference" icon="code" href="/api-reference/case">
+    Full endpoint documentation
+  </Card>
+  <Card title="MCP server" icon="robot" href="/guides/mcp-server">
+    Use DocketLayer directly from Claude
+  </Card>
+</CardGroup>

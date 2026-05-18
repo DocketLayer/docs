@@ -1,0 +1,364 @@
+---
+title: Field Reference
+description: Complete data dictionary for every field in the DocketLayer v2.0.0 response shape.
+---
+
+This is the canonical reference for every field returned by DocketLayer v2.0.0. Each entry covers type, nullability, populated-when conditions, and value enumerations where applicable.
+
+The [OpenAPI specification](https://api.docketlayer.ai/v2/openapi.yaml) is the authoritative wire contract. This page expands on it in prose.
+
+## Conventions
+
+- **Type** — JSON type (`string`, `integer`, `number`, `boolean`, `array`, `object`, `null`).
+- **Nullable** — `yes` if the field may legitimately be `null` in a valid response.
+- **Always present** — `yes` if the field appears in every applicable response; `no` if conditional.
+- **Enum** — where a field has a fixed set of legal values, they are listed.
+
+---
+
+## Response envelope — `meta`
+
+Present in every response, including errors.
+
+| Field | Type | Nullable | Always present | Notes |
+|---|---|---|---|---|
+| `meta.request_id` | string | no | yes | UUIDv4. Use for support correlation. |
+| `meta.queried_at` | string | no | yes | ISO-8601 timestamp with offset. |
+| `meta.query_cost_usd` | number | no | paid endpoints only | Always `0.99` for single-case paid endpoints. On batch, see batch envelope. On free endpoints, omitted. `0` in sandbox mode. |
+| `meta.coverage_status` | string | no | `/v2/case`, `/v2/monitor` | Enum: `full`, `partial`. |
+| `meta.cache_age_seconds` | integer | no | `/v2/case` | Seconds since last refresh from source court. |
+| `meta.context_delivered` | string | no | `/v2/case` | Enum: `basic`, `full`. May differ from request if downgraded. |
+| `meta.language_delivered` | string | no | `/v2/case` | Enum: `en`, `fr`, `bilingual`. |
+| `meta.truncated` | boolean | no | `/v2/case` | `true` if response was capped under the 2 MB size ceiling. |
+| `meta.truncation_details` | object | yes | when `truncated: true` | See [Truncation details](#truncation-details) below. |
+| `meta.sandbox` | boolean | no | yes | `true` if the request was in sandbox mode. |
+| `meta.tag` | string | yes | yes | Echoed value of the `X-DocketLayer-Tag` request header, if supplied. |
+
+### Truncation details
+
+Present only when `meta.truncated` is `true`.
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `omitted_fields` | array of string | no | Field paths omitted from the response. |
+| `total_entries` | integer | yes | Total entries in the omitted field, if applicable. |
+| `entries_included` | integer | yes | Entries actually delivered. |
+| `continuation_hint` | string | no | Human-readable suggestion for retrieving omitted content. |
+
+---
+
+## Top-level response fields — `/v2/case`
+
+| Field | Type | Nullable | Always present | Notes |
+|---|---|---|---|---|
+| `case_id` | string | no | yes | The case identifier as queried, normalized per court convention. |
+| `court_code` | string | no | yes | The court identifier as queried. |
+| `case` | object | no | yes | See [Case object](#case-object-basic-context) below. |
+| `delta` | object | yes | when `last_checked` supplied | See [Delta object](#delta-object) below. |
+
+---
+
+## Case object — basic context
+
+Present in all `/v2/case` responses regardless of context tier.
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `case.case_number` | string | no | Source court's case number. May differ from `case_id` if normalization rewrote the format. |
+| `case.case_name` | string | no | Primary case name in the language of the proceeding. |
+| `case.case_name_secondary` | string | yes | Canonical case name in a second language, where the source court publishes one. |
+| `case.case_name_secondary_language` | string | yes | Language code for `case_name_secondary`. Required when `case_name_secondary` is non-null. |
+| `case.case_type` | string | no | See [case_type enum](#case_type-enum). |
+| `case.court_code` | string | no | Same as top-level `court_code`. Repeated for self-contained case object. |
+| `case.court_name` | string | no | Human-readable court name. |
+| `case.jurisdiction_country` | string | no | ISO 3166-1 alpha-2. `US` or `CA`. |
+| `case.language` | string | yes | Enum: `en`, `fr`, `bilingual`. Null only when language is unknown or inapplicable. |
+| `case.date_filed` | string | yes | ISO-8601 timestamp. Null if unknown. |
+| `case.date_terminated` | string | yes | ISO-8601 timestamp. Null for open cases. |
+| `case.status` | string | no | See [status enum](#status-enum). |
+| `case.assigned_judge` | string | yes | Single judge for trial-level cases. Null for appellate cases (see `case.appellate.panel`). Null where unassigned or unknown. |
+| `case.nature_of_proceeding` | string | yes | Court-specific categorization. Null where the court does not categorize. |
+| `case.cause` | string | yes | US federal courts only. Null for state and Canadian courts. |
+| `case.jury_demand` | string | yes | Enum: `plaintiff`, `defendant`, `both`, `none`. Null where inapplicable. |
+| `case.primary_parties` | array | no | Always an array; may be empty. See [Party object (basic)](#party-object-basic). |
+| `case.appellate` | object | yes | Null for trial-level cases. See [Appellate object](#appellate-object). |
+
+### Party object (basic)
+
+Returned in `case.primary_parties[]` at basic context.
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `name` | string | no | Party name. |
+| `type` | string | no | See [party type enum](#party-type-enum). |
+
+---
+
+## Case object — full context additions
+
+The following fields are added when `context=full` is requested. All basic-context fields remain present.
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `case.parties` | array | no | Complete party list. May be empty. See [Party object (full)](#party-object-full). |
+| `case.cross_references` | array | no | May be empty. See [Cross-reference object](#cross-reference-object). |
+| `case.docket_history` | array | no | May be empty. See [Docket entry object](#docket-entry-object). |
+
+### Party object (full)
+
+Returned in `case.parties[]` at full context.
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `name` | string | no | |
+| `type` | string | no | See [party type enum](#party-type-enum). |
+| `role_in_case` | string | yes | Court-specific role designation. May duplicate `type` or refine it. |
+| `date_joined` | string | yes | ISO-8601 timestamp. |
+| `date_terminated` | string | yes | ISO-8601 timestamp. Null if still active. |
+| `attorneys` | array | no | May be empty. See [Attorney object](#attorney-object). |
+
+### Attorney object
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `name` | string | no | |
+| `firm` | string | yes | Null when not on record. |
+| `role` | string | yes | Court-specific (e.g., "lead attorney"). |
+| `date_action` | string | yes | ISO-8601 timestamp of the attorney's most recent docket action (appearance, withdrawal, etc.). |
+
+### Cross-reference object
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `relationship` | string | no | See [relationship enum](#relationship-enum). |
+| `case_id` | string | no | Identifier of the related case. |
+| `court_code` | string | no | Court of the related case. May reference courts outside DocketLayer's coverage. |
+| `relationship_note` | string | yes | Required when `relationship` is `other`; optional otherwise. |
+
+### Docket entry object
+
+Used in both `case.docket_history[]` and `delta.new_filings[]`.
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `entry_number` | integer | yes | Source court's entry number. Null if the source does not number entries. |
+| `filed_at` | string | no | ISO-8601 timestamp. |
+| `filing_type` | string | yes | Court-specific categorization (e.g., "motion", "order"). |
+| `filed_by` | string | yes | Filer name as recorded by the court. |
+| `description` | string | no | Source court's description of the entry, in the original language. |
+| `document_identifier` | string | yes | Source-system identifier. Null when no stable identifier exists. |
+| `document_identifier_type` | string | no | See [document_identifier_type enum](#document_identifier_type-enum). Use `none` when `document_identifier` is null. |
+| `external_url` | string | yes | URL to the source-system view of the entry, where available. |
+
+---
+
+## Appellate object
+
+Present when `case.appellate` is non-null (appellate cases only).
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `case.appellate.panel` | array of string | no | Judge names. Empty array if panel not yet assigned. |
+| `case.appellate.appeal_type` | string | no | See [appeal_type enum](#appeal_type-enum). |
+| `case.appellate.originating_court_code` | string | yes | Court code of the originating court. May reference courts outside DocketLayer's coverage. |
+| `case.appellate.originating_case_id` | string | yes | Case identifier in the originating court. |
+| `case.appellate.disposition_below` | string | yes | Short description of the originating court's judgment. |
+| `case.appellate.oral_argument_date` | string | yes | ISO-8601 timestamp. Null if not yet scheduled. |
+
+---
+
+## Delta object
+
+Present when `last_checked` was supplied in the request.
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `delta.changed` | boolean | no | `true` if any new filings exist since `last_checked`. |
+| `delta.since` | string | no | The `last_checked` value, echoed back. ISO-8601. |
+| `delta.change_count` | integer | no | Number of new filings. Zero when `changed` is `false`. |
+| `delta.new_filings` | array | no | Empty array when `changed` is `false`. Same schema as `case.docket_history[]`. |
+
+---
+
+## `/v2/monitor` response fields
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `meta.*` | object | | Standard meta, minus `cache_age_seconds`, `context_delivered`, `language_delivered`. |
+| `case_id` | string | no | |
+| `court_code` | string | no | |
+| `changed` | boolean | no | |
+| `change_count` | integer | no | |
+| `latest_activity_at` | string | yes | ISO-8601 timestamp. Null if `changed` is `false` and no historical activity recorded. |
+
+---
+
+## `/v2/cases/batch` response fields
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `meta.batch_size` | integer | no | Number of queries submitted. |
+| `meta.successful` | integer | no | Successful queries. |
+| `meta.failed` | integer | no | Failed queries. |
+| `meta.total_cost_usd` | number | no | `0.99 × meta.batch_size`. The x402 payment covers the full batch upfront. No payment is settled only if all queries fail; if any succeed, the full batch amount is charged. |
+| `results` | array | no | One entry per query, in submission order. |
+
+### Batch result entry
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `case_id` | string | no | Echoed from request. |
+| `court_code` | string | no | Echoed from request. |
+| `status` | string | no | Enum: `success`, `error`. |
+| `response` | object | yes | Full `/v2/case` response envelope when `status` is `success`. |
+| `error` | object | yes | Error body when `status` is `error`. See [errors](/errors). |
+
+---
+
+## `/v2/wallet/keys` response fields
+
+### GET
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `wallet` | string | no | Paying wallet address. |
+| `current_key_id` | string | no | Identifier for the current signing key. |
+| `current_key_created_at` | string | no | ISO-8601 timestamp. |
+| `previous_key_id` | string | yes | Null if no rotation has occurred. |
+
+### POST (key rotation)
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `wallet` | string | no | |
+| `new_key_id` | string | no | |
+| `new_key_secret` | string | no | The HMAC secret. **Returned exactly once. Save it.** |
+| `new_key_created_at` | string | no | ISO-8601 timestamp. |
+| `previous_key_id` | string | yes | The pre-rotation key. |
+| `previous_key_valid_until` | string | yes | ISO-8601 timestamp. 30 minutes after rotation. |
+
+---
+
+## `/v2/wallet/deliveries` response fields
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `wallet` | string | no | |
+| `deliveries` | array | no | Per-delivery records. May be empty. |
+| `next_cursor` | string | yes | Pagination cursor. Null on last page. |
+
+### Delivery record
+
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `delivery_id` | string | no | Internal delivery identifier. |
+| `case_id` | string | no | |
+| `court_code` | string | no | |
+| `callback_url` | string | no | |
+| `status` | string | no | Enum: `succeeded`, `failed`, `retrying`. |
+| `attempts` | integer | no | Total attempts so far. |
+| `first_attempt_at` | string | no | ISO-8601 timestamp. |
+| `last_attempt_at` | string | no | ISO-8601 timestamp. |
+| `last_response_code` | integer | yes | HTTP response code from the callback endpoint. Null on network errors. |
+| `idempotency_key` | string | no | UUIDv4 sent as `Idempotency-Key` header on each delivery attempt. |
+
+---
+
+## Enum reference
+
+### `case_type` enum
+
+| Value | Notes |
+|---|---|
+| `civil` | General civil cases. |
+| `criminal` | Criminal cases. |
+| `bankruptcy` | Bankruptcy cases. |
+| `administrative` | Administrative law (e.g., agency review). |
+| `tax` | Tax court cases. |
+| `judicial_review` | Canadian judicial review proceedings. |
+| `appellate` | Appeals at any level. |
+| `family` | Family court matters. Often public-access-restricted. |
+| `probate` | Probate proceedings. |
+| `traffic` | Traffic offenses. |
+
+### `status` enum
+
+| Value | Notes |
+|---|---|
+| `open` | Active case. |
+| `closed` | Closed by final judgment or other terminal event. |
+| `dismissed` | Dismissed before final judgment. |
+| `discontinued` | Canadian terminology; analogous to dismissed/withdrawn. |
+| `stayed` | Active but paused. |
+| `consolidated` | Merged into another case. |
+| `transferred` | Moved to another court. |
+| `granted_cert` | Cert granted (appellate). |
+| `denied_cert` | Cert denied. |
+| `argued` | Oral argument held; awaiting decision. |
+| `submitted` | Submitted on briefs without oral argument; awaiting decision. |
+
+Not all values apply to all courts.
+
+### Party `type` enum
+
+| Value | Notes |
+|---|---|
+| `plaintiff` | Common-law civil plaintiff. |
+| `defendant` | Common-law civil defendant. |
+| `applicant` | Federal Court of Canada; party initiating judicial review. |
+| `respondent` | Counterparty to applicant. |
+| `appellant` | Party initiating an appeal. |
+| `petitioner` | Party filing a petition (cert, review, etc.). |
+| `intervenor` | Court-permitted third party. |
+| `third_party` | Joined third-party defendant. |
+| `accused` | Canadian criminal terminology for the defendant. |
+| `crown` | Canadian Crown prosecution. |
+| `interested_party` | Tyler Odyssey and other state-court systems. |
+| `demandeur` | Quebec civil-law plaintiff. Stored verbatim. |
+| `d\u00e9fendeur` | Quebec civil-law defendant. Stored verbatim. |
+| `requ\u00e9rant` | Quebec applicant. Stored verbatim. |
+| `intim\u00e9` | Quebec respondent. Stored verbatim. |
+
+### `document_identifier_type` enum
+
+| Value | Notes |
+|---|---|
+| `pacer_doc_id` | PACER document ID. Subject to fourth-digit-zero normalization. |
+| `acms_document_guid` | ACMS appellate document UUID. |
+| `fct_recorded_entry_id` | Federal Court of Canada recorded entry identifier. |
+| `tyler_envelope_id` | Tyler Odyssey envelope identifier. |
+| `tyler_event_id` | Tyler Odyssey event identifier. |
+| `tyler_document_id` | Tyler Odyssey document identifier. |
+| `none` | No stable identifier from the source court. |
+
+### `relationship` enum (cross-references)
+
+| Value | Notes |
+|---|---|
+| `consolidated_with` | Cases formally consolidated. |
+| `appealed_from` | This case is the appeal of the referenced case. |
+| `appealed_to` | This case was appealed; the reference is the appellate proceeding. |
+| `related_to` | Court-noted related case without a more specific relationship. |
+| `member_case_of_mdl` | Member case of a Multi-District Litigation. |
+| `same_party` | Cases involving the same party (used sparingly). |
+| `other` | Use with `relationship_note`. |
+
+### `appeal_type` enum
+
+| Value | Notes |
+|---|---|
+| `direct` | Direct appeal of a final judgment. |
+| `cert_petition` | Petition for writ of certiorari. |
+| `interlocutory` | Appeal of a non-final order. |
+| `petition_for_review` | Agency-review petition (immigration, etc.). |
+| `mandamus` | Petition for writ of mandamus. |
+| `certified_question` | Certified question of law. |
+| `en_banc_rehearing` | Rehearing en banc. |
+
+### `delivery.status` enum
+
+| Value | Notes |
+|---|---|
+| `succeeded` | 2xx response received within the retry window. |
+| `failed` | All 7 attempts exhausted; no further retries. |
+| `retrying` | Currently between attempts; may still succeed or fail. |

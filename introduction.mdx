@@ -1,0 +1,58 @@
+---
+title: Introduction
+description: Court docket monitoring for AI agents across 2,150 US and Canadian courts. Pay per query. $0.99 USDC via x402. No accounts.
+---
+
+DocketLayer is a pay-per-query API that gives AI agents programmatic access to court docket monitoring across 2,150 courts — all 50 US state court systems, all US federal courts, and Canadian federal and provincial courts.
+
+Your agent submits a case ID and court code, pays **$0.99 in USDC** via the x402 protocol, and receives structured JSON with change detection built in. No accounts. No subscriptions. No API keys. The payment is the authentication.
+
+## How it works
+
+<Steps>
+  <Step title="Submit">
+    Your agent makes a GET request to `/v2/case` with a case ID, court code, and optional `last_checked` timestamp.
+  </Step>
+  <Step title="Pay">
+    DocketLayer responds with HTTP 402. Your x402 client pays $0.99 in USDC on Solana automatically and retries the request.
+  </Step>
+  <Step title="Receive">
+    DocketLayer returns structured JSON — full case context and, if `last_checked` was supplied, a `delta` block showing every new filing since your last check.
+  </Step>
+</Steps>
+
+## What you need
+
+- A Solana wallet funded with USDC
+- The x402 client library configured for your agent
+- A case identifier and court code for a covered court (US state, federal, or Canadian)
+
+## Endpoints
+
+| Endpoint | Method | Price | Description |
+|---|---|---|---|
+| `GET /v2/case` | GET | $0.99 | Full case context with optional delta since `last_checked` |
+| `GET /v2/monitor` | GET | $0.99 | Lightweight change indicator — count and timestamp only |
+| `POST /v2/cases/batch` | POST | $0.99 per case | Up to 50 cases in one call |
+| `GET /v2/wallet/keys` | GET | $0.99 | Current callback signing-key state |
+| `POST /v2/wallet/keys` | POST | $0.99 | Rotate callback signing key |
+| `GET /v2/wallet/deliveries` | GET | $0.99 | Callback delivery history |
+| `GET /v2/status` | GET | Free | Coverage and system health |
+| `POST /v2/mcp` | POST | Varies | MCP Streamable HTTP endpoint — 3 free tools, 4 paid tools |
+
+## Quick links
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Get your first query running in under 5 minutes
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication">
+    How x402 payment works as authentication
+  </Card>
+  <Card title="Wallet setup" icon="wallet" href="/guides/wallet-setup">
+    Create a Solana wallet and fund it with USDC
+  </Card>
+  <Card title="MCP server" icon="robot" href="/guides/mcp-server">
+    Use DocketLayer directly from Claude and other AI agents
+  </Card>
+</CardGroup>

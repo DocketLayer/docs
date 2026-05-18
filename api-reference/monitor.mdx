@@ -1,0 +1,99 @@
+---
+title: GET /v2/monitor
+description: Lightweight change detection. Returns a boolean, count, and latest activity timestamp.
+---
+
+## Overview
+
+`GET /v2/monitor` returns a minimal response — has anything changed since `last_checked`, how many new filings, and when the latest one occurred. It is designed for agents running high-frequency monitoring loops where minimizing response payload matters.
+
+Use `/v2/monitor` to check for changes, then call `/v2/case` only when `changed` is `true` to retrieve the full filing details.
+
+**Base URL:** `https://api.docketlayer.ai`
+
+**Price:** $0.99 USDC per successful query
+
+**Sandbox:** Add `?test=1` or `X-DocketLayer-Test: 1` — returns fixture data, no charge
+
+## Request
+
+### Parameters
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `case_id` | string | Yes | Case identifier — e.g. `1:24-cv-01234` |
+| `court_code` | string | Yes | Court identifier — e.g. `nysd`, `deb`, `cand` |
+| `last_checked` | string | Yes | ISO-8601 timestamp with timezone offset |
+
+`last_checked` is required on `/v2/monitor`. To get an initial snapshot without a prior timestamp, use `/v2/case`.
+
+### Example request
+
+```bash
+curl "https://api.docketlayer.ai/v2/monitor?case_id=1:24-cv-01234&court_code=nysd&last_checked=2026-01-01T00:00:00Z"
+```
+
+## Response
+
+```json
+{
+  "meta": {
+    "request_id": "req_01jt7y4kx0",
+    "queried_at": "2026-04-29T12:00:00Z",
+    "query_cost_usd": 0.99,
+    "coverage_status": "full",
+    "sandbox": false,
+    "tag": null
+  },
+  "case_id": "1:24-cv-01234",
+  "court_code": "nysd",
+  "changed": false,
+  "change_count": 0,
+  "latest_activity_at": null
+}
+```
+
+### Response fields
+
+| Field | Type | Description |
+|---|---|---|
+| `meta.queried_at` | string | ISO-8601 timestamp — use as `last_checked` in your next call |
+| `changed` | boolean | Whether any new filings were detected since `last_checked` |
+| `change_count` | number | Number of new filings since `last_checked` |
+| `latest_activity_at` | string \| null | Timestamp of the most recent new filing; null if none |
+
+## Usage pattern
+
+```python
+import time
+
+def monitoring_loop(case_id, court_code, last_checked):
+    while True:
+        result = client.get(
+            "https://api.docketlayer.ai/v2/monitor",
+            params={
+                "case_id": case_id,
+                "court_code": court_code,
+                "last_checked": last_checked
+            }
+        ).json()
+
+        if result["changed"]:
+            # Retrieve full filing details
+            details = client.get(
+                "https://api.docketlayer.ai/v2/case",
+                params={
+                    "case_id": case_id,
+                    "court_code": court_code,
+                    "last_checked": last_checked
+                }
+            ).json()
+            handle_new_filings(details["delta"]["new_filings"])
+
+        last_checked = result["meta"]["queried_at"]
+        time.sleep(3600)  # Check every hour
+```
+
+<Note>
+Both `/v2/monitor` and `/v2/case` cost $0.99 per query. The efficiency gain of `/v2/monitor` is in response payload size, not price. For most monitoring workflows, calling `/v2/case` directly with `last_checked` is simpler and equally cost-effective.
+</Note>

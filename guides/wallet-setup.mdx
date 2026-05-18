@@ -1,0 +1,130 @@
+---
+title: Wallet setup
+description: Create a Solana wallet, fund it with USDC, and configure x402 for your agent.
+---
+
+DocketLayer queries are paid in USDC on Solana — $0.99 per query, settled on-chain via x402. Before your agent can make its first paid request, its wallet needs a USDC balance.
+
+## Step 1 — Create a Solana wallet
+
+For agents that operate autonomously, generate a wallet programmatically. The private key is stored as an environment variable and the agent signs transactions automatically.
+
+<CodeGroup>
+
+```javascript JavaScript
+import { Keypair } from "@solana/web3.js";
+
+// Run once — save the output securely
+const wallet = Keypair.generate();
+console.log("Public key:", wallet.publicKey.toBase58());
+console.log("Secret key:", Buffer.from(wallet.secretKey).toString("base64"));
+```
+
+```python Python
+from solana.keypair import Keypair
+import base64
+
+wallet = Keypair()
+print("Public key:", str(wallet.public_key))
+print("Secret key:", base64.b64encode(wallet.secret_key).decode())
+```
+
+</CodeGroup>
+
+Store the secret key as an environment variable:
+
+```bash
+# .env — never commit this file
+SOLANA_PRIVATE_KEY=your_base64_encoded_secret_key
+```
+
+<Warning>
+Never hardcode your private key in source code or commit it to a repository. Use environment variables or a secrets manager.
+</Warning>
+
+## Step 2 — Fund with USDC
+
+Each query costs $0.99 in USDC on Solana. Options for funding:
+
+**Buy USDC on an exchange** — Purchase on Coinbase or Kraken and withdraw to your Solana wallet address. When withdrawing, confirm you select the **Solana network** — not Ethereum or any other chain.
+
+**Swap SOL to USDC** — Use [Jupiter](https://jup.ag) to swap SOL or any Solana token to USDC directly in your wallet.
+
+Verify your balance at [Solana Explorer](https://explorer.solana.com) by searching your wallet's public address.
+
+| Cases monitored | Daily queries | Monthly cost |
+|---|---|---|
+| 10 | 10 | ~$30 |
+| 100 | 100 | ~$300 |
+| 1,000 | 1,000 | ~$3,000 |
+
+## Step 3 — Configure x402
+
+<CodeGroup>
+
+```python Python
+import os
+from x402 import PaymentClient
+
+client = PaymentClient(
+    private_key=os.environ["SOLANA_PRIVATE_KEY"],
+    network="solana-mainnet",
+    currency="USDC"
+)
+
+# Make a paid query
+result = client.get(
+    "https://api.docketlayer.ai/v2/case",
+    params={
+        "case_id": "1:24-cv-01234",
+        "court_code": "nysd",
+        "last_checked": "2026-01-01T00:00:00Z"
+    }
+).json()
+```
+
+```javascript JavaScript
+import { createPaymentClient } from "x402";
+import { Keypair, Connection } from "@solana/web3.js";
+
+const connection = new Connection("https://api.mainnet-beta.solana.com");
+const wallet = Keypair.fromSecretKey(
+  Buffer.from(process.env.SOLANA_PRIVATE_KEY, "base64")
+);
+
+const client = createPaymentClient({
+  wallet,
+  connection,
+  network: "solana-mainnet",
+  currency: "USDC"
+});
+```
+
+</CodeGroup>
+
+## Step 4 — Test with the free endpoint
+
+Before making paid queries, confirm connectivity:
+
+```bash
+curl https://api.docketlayer.ai/v2/status
+```
+
+## Monitor your balance
+
+A depleted wallet causes all queries to fail. Check your balance programmatically and alert when it falls below a threshold:
+
+```python
+from solana.rpc.api import Client
+from spl.token.client import Token
+
+def get_usdc_balance(wallet_address):
+    # USDC mint address on Solana mainnet
+    USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+    # Use Solana Explorer or your preferred RPC to check balance
+    pass
+
+balance = get_usdc_balance(os.environ["SOLANA_PUBLIC_KEY"])
+if balance < 10:
+    send_alert("Wallet balance low — refund before next cycle")
+```

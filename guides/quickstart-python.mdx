@@ -1,0 +1,171 @@
+---
+title: Python quickstart
+description: Query DocketLayer from Python using the x402 client library.
+---
+
+## Install the x402 library
+
+```bash
+pip install x402
+```
+
+## Configure your wallet
+
+```python
+import os
+from x402 import PaymentClient
+
+client = PaymentClient(
+    private_key=os.environ["SOLANA_PRIVATE_KEY"],
+    network="solana-mainnet",
+    currency="USDC"
+)
+```
+
+`SOLANA_PRIVATE_KEY` is your wallet's private key, base64-encoded. See the [wallet setup guide](/guides/wallet-setup) if you do not have one yet.
+
+## Check coverage (free)
+
+```python
+import requests
+
+status = requests.get("https://api.docketlayer.ai/v2/status").json()
+for court in status["courts"]:
+    print(f"{court['court_code']:10} {court['coverage']:8} {court['name']}")
+```
+
+## First query — no last_checked
+
+```python
+result = client.get(
+    "https://api.docketlayer.ai/v2/case",
+    params={
+        "case_id": "1:24-cv-01234",
+        "court_code": "nysd"
+    }
+).json()
+
+case = result["case"]
+print(f"{case['case_name']} — {case['status']}")
+print(f"Judge: {case['assigned_judge']}")
+print(f"Filed: {case['date_filed']}")
+
+# Store for next query
+last_checked = result["meta"]["queried_at"]
+```
+
+## Query with delta
+
+```python
+result = client.get(
+    "https://api.docketlayer.ai/v2/case",
+    params={
+        "case_id": "1:24-cv-01234",
+        "court_code": "nysd",
+        "last_checked": last_checked
+    }
+).json()
+
+last_checked = result["meta"]["queried_at"]
+
+delta = result.get("delta")
+if delta and delta["changed"]:
+    print(f"{delta['change_count']} new filing(s):")
+    for filing in delta["new_filings"]:
+        print(f"  [{filing['filing_type']}] {filing['description']}")
+else:
+    print("No changes")
+```
+
+## Full context
+
+```python
+result = client.get(
+    "https://api.docketlayer.ai/v2/case",
+    params={
+        "case_id": "1:24-cv-01234",
+        "court_code": "nysd",
+        "context": "full"
+    }
+).json()
+
+case = result["case"]
+print(f"{len(case['parties'])} parties")
+print(f"{len(case['docket_history'])} docket entries")
+
+if result["meta"]["truncated"]:
+    td = result["meta"]["truncation_details"]
+    print(f"Truncated: {td['entries_included']} of {td['total_entries']} entries returned")
+```
+
+## Batch query
+
+```python
+result = client.post(
+    "https://api.docketlayer.ai/v2/cases/batch",
+    json={
+        "queries": [
+            {"case_id": "1:24-cv-01234", "court_code": "nysd", "last_checked": last_checked},
+            {"case_id": "1:22-bk-11068", "court_code": "deb", "last_checked": last_checked}
+        ]
+    }
+).json()
+
+print(f"Batch: {result['meta']['successful']} succeeded, {result['meta']['failed']} failed")
+print(f"Total cost: ${result['meta']['total_cost_usd']:.2f}")
+
+for r in result["results"]:
+    if r["status"] == "success":
+        changed = r["response"].get("delta", {}).get("changed", False)
+        print(f"  {r['case_id']}: {'changed' if changed else 'no change'}")
+    else:
+        print(f"  {r['case_id']}: error — {r['error']['code']}")
+```
+
+## Error handling
+
+```python
+response = client.get("https://api.docketlayer.ai/v2/case", params={...})
+
+if response.status_code == 200:
+    data = response.json()
+
+elif response.status_code == 402:
+    # Payment failed — check wallet balance and x402 config
+    print("Payment failed:", response.json()["error"]["message"])
+
+elif response.status_code == 404:
+    err = response.json()["error"]
+    if err["code"] == "case_not_found":
+        # Case enqueued — retry in a few minutes
+        pass
+
+elif response.status_code == 422:
+    # Court not covered
+    print("Court not covered — check /v2/status")
+
+elif response.status_code == 429:
+    import time
+    retry_after = response.json()["error"]["details"]["retry_after"]
+    time.sleep(retry_after)
+
+elif response.status_code in (500, 503, 504):
+    # Retry with backoff
+    pass
+```
+
+## Sandbox mode
+
+Test without spending USDC:
+
+```python
+import requests
+
+result = requests.get(
+    "https://api.docketlayer.ai/v2/case",
+    params={"test": "1", "case_id": "1:24-cv-01234", "court_code": "nysd"}
+).json()
+
+assert result["meta"]["sandbox"] is True
+assert result["meta"]["query_cost_usd"] == 0
+```

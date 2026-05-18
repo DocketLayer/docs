@@ -1,0 +1,52 @@
+---
+title: Case ID format
+description: US federal case number format reference. State and Canadian case ID formats vary by court — see /v2/status for each court's pattern and example.
+---
+
+US federal case numbers follow a standard format across all district and bankruptcy courts. Understanding the format helps you construct valid `case_id` values for DocketLayer queries.
+
+For state and Canadian courts, case ID formats vary by court. Each court's expected format and an example are available in the `case_id_format` field of the `/v2/status` response.
+
+## US federal standard format
+
+```
+division:year-type-number
+```
+
+| Component | Description | Example |
+|---|---|---|
+| `division` | Division number within the court | `1` |
+| `year` | Two-digit year the case was filed | `24` |
+| `type` | Case type code | `cv`, `bk`, `cr` |
+| `number` | Sequential case number | `01234` |
+
+## Case type codes
+
+| Code | Type |
+|---|---|
+| `cv` | Civil |
+| `bk` | Bankruptcy |
+| `cr` | Criminal |
+| `mc` | Miscellaneous |
+| `ap` | Adversary proceeding (bankruptcy) |
+
+## Examples
+
+| Case ID | Court | Type | Description |
+|---|---|---|---|
+| `1:24-cv-01234` | nysd | Civil | Civil case filed in 2024, SDNY |
+| `1:22-bk-11068` | deb | Bankruptcy | Bankruptcy case filed in 2022, Delaware |
+| `5:20-cv-03010` | cand | Civil | Civil case filed in 2020, NDCA |
+| `2:23-cr-00456` | cacd | Criminal | Criminal case filed in 2023, CDCA |
+
+## Finding a case number
+
+Case numbers appear on all court filings and on the PACER docket sheet. You can look up case numbers on [PACER](https://pacer.uscourts.gov) using party name, attorney, or other search criteria.
+
+## Validation
+
+DocketLayer validates case ID format on receipt. A malformed case ID returns a 400 error and no charge. Common mistakes:
+
+- Missing the colon separator between division and year: `124-cv-01234` is wrong, `1:24-cv-01234` is correct
+- Using a four-digit year: `1:2024-cv-01234` is wrong, `1:24-cv-01234` is correct
+- Including spaces or special characters other than the colon and hyphen separators

@@ -1,0 +1,112 @@
+---
+title: Sandbox mode
+description: Test DocketLayer integration without spending USDC. Returns fixture data on every endpoint.
+---
+
+Sandbox mode lets you test your integration against real API endpoints using fixture data — correct response structure, no x402 payment required, no USDC spent.
+
+## Enabling sandbox mode
+
+Add `?test=1` to any request URL, or send the `X-DocketLayer-Test: 1` header.
+
+```bash
+# Query string
+curl "https://api.docketlayer.ai/v2/case?test=1&case_id=1:24-cv-01234&court_code=nysd"
+
+# Header
+curl -H "X-DocketLayer-Test: 1" "https://api.docketlayer.ai/v2/case?case_id=1:24-cv-01234&court_code=nysd"
+```
+
+## Sandbox behavior
+
+- No x402 payment is required or processed
+- `meta.query_cost_usd` is always `0`
+- `meta.sandbox` is always `true`
+- Response data is a fixture — the case name, parties, and filings are synthetic
+- `delta.changed` is always `false` (no new filings in sandbox)
+- All parameter validation runs normally — invalid parameters still return errors
+
+## Fixture response
+
+All endpoints return fixture data reflecting the response structure. For `GET /v2/case`:
+
+```json
+{
+  "meta": {
+    "request_id": "req_01sandbox",
+    "queried_at": "2026-04-29T12:00:00Z",
+    "query_cost_usd": 0,
+    "coverage_status": "full",
+    "cache_age_seconds": 120,
+    "context_delivered": "basic",
+    "language_delivered": "en",
+    "truncated": false,
+    "sandbox": true,
+    "tag": null
+  },
+  "case_id": "1:24-cv-01234",
+  "court_code": "nysd",
+  "case": {
+    "case_number": "1:24-cv-01234",
+    "case_name": "Smith v. Jones [Sandbox]",
+    "case_type": "civil",
+    "court_code": "nysd",
+    "court_name": "Sandbox Court",
+    "jurisdiction_country": "US",
+    "status": "open",
+    "assigned_judge": "Hon. Sandbox Judge",
+    "primary_parties": [
+      { "name": "John Smith", "type": "plaintiff" },
+      { "name": "Acme Corp.", "type": "defendant" }
+    ],
+    "appellate": null
+  }
+}
+```
+
+## Testing with code
+
+```python
+import requests
+
+# Test your parsing logic without spending USDC
+response = requests.get(
+    "https://api.docketlayer.ai/v2/case",
+    params={
+        "test": "1",
+        "case_id": "1:24-cv-01234",
+        "court_code": "nysd",
+        "last_checked": "2026-01-01T00:00:00Z"
+    }
+)
+
+data = response.json()
+assert data["meta"]["sandbox"] is True
+assert data["meta"]["query_cost_usd"] == 0
+```
+
+```javascript
+const url = new URL("https://api.docketlayer.ai/v2/case");
+url.searchParams.set("test", "1");
+url.searchParams.set("case_id", "1:24-cv-01234");
+url.searchParams.set("court_code", "nysd");
+
+const data = await fetch(url).then(r => r.json());
+console.assert(data.meta.sandbox === true);
+```
+
+## Batch sandbox
+
+`POST /v2/cases/batch` also supports sandbox mode. All queries in the batch return fixture data regardless of the case IDs or court codes provided.
+
+```bash
+curl -X POST "https://api.docketlayer.ai/v2/cases/batch?test=1" \
+  -H "Content-Type: application/json" \
+  -d '{"queries":[{"case_id":"1:24-cv-01234","court_code":"nysd"}]}'
+```
+
+## Notes
+
+- Sandbox and live modes share the same endpoint URLs — only the `test=1` parameter or `X-DocketLayer-Test` header differentiates them
+- Sandbox requests are not logged against your wallet's rate limit
+- The free `/v2/status` endpoint does not support sandbox mode — it always returns live data

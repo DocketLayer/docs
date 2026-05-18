@@ -1,0 +1,49 @@
+---
+title: Caching behaviour
+description: How DocketLayer serves data from its normalized cache and what it means for your queries.
+---
+
+DocketLayer serves data from a normalized cache — not live from source courts. The normalization service continuously polls source courts and writes the results to DocketLayer's store. When you query a case, you receive the most recently normalized snapshot of that case.
+
+## What this means for you
+
+**Data is not real-time.** There is always some lag between what source courts reflect and what DocketLayer returns. Most courts have a polling interval of 1 hour; select high-priority courts poll every 15 minutes. During source court maintenance windows, it may be longer.
+
+**`meta.cache_age_seconds` tells you how fresh the data is.** Every response includes this field: the number of seconds since DocketLayer last refreshed this case from the source court.
+
+```json
+{
+  "meta": {
+    "cache_age_seconds": 347,
+    ...
+  }
+}
+```
+
+A value of 347 means the data was last refreshed roughly 6 minutes ago.
+
+**`X-Cache: HIT` on the response header** means the response was served from DocketLayer's edge cache without a database round-trip. Cache hits are slightly faster. You are still charged — the payment is real regardless of cache state.
+
+## Basic context and edge caching
+
+`context=basic` requests without `last_checked` are eligible for edge cache hits. If a valid cache entry exists for the case, the response is served from it.
+
+One consequence: on a cache hit, `primary_parties` may be an empty array. Party data is not stored in the edge cache — it requires a database lookup. If you need primary party data reliably, supply `last_checked` or use `context=full`.
+
+`context=full` always queries the database. Edge caching does not apply.
+
+## Staleness and the delta block
+
+Because data is cached, `delta.new_filings` reflects filings that DocketLayer has normalized — not necessarily every filing that has physically occurred at the court since your last query. A filing made at 12:00 may not appear in DocketLayer until the next normalization cycle completes — typically within 1 hour for most courts, or 15 minutes for select high-priority courts.
+
+For time-sensitive monitoring, factor in `cache_age_seconds` when interpreting the delta. If `cache_age_seconds` is 3600 and you check every few hours, you will never miss a filing. If you are checking more frequently than the cache refresh rate, consecutive queries may return `delta.changed: false` even if activity occurred at the court.
+
+## First query for a new case
+
+When a case has never been queried through DocketLayer before, `GET /v2/case` returns 404 and automatically enqueues the case for normalization. Retry after a few minutes. Once normalized, the case is served normally.
+
+## Source court availability
+
+DocketLayer's normalization depends on source court availability. During maintenance windows, affected courts are not refreshed. `/v2/status` reflects known maintenance windows and current operational status. Queries for courts under maintenance still return the most recently cached data — they do not return 503 unless DocketLayer has no cached data at all for that court.
+
+If a source court is unavailable and DocketLayer has no data for a queried case, the response is 503 and no charge is applied.

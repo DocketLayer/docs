@@ -1,0 +1,113 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "DocketLayer",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#1a6fff",
+    "light": "#4d8fff",
+    "dark": "#1255cc",
+    "background": {
+      "dark": "#000000"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "docketlayer.ai",
+      "url": "https://docketlayer.ai"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get started",
+    "url": "https://docketlayer.ai/quickstart"
+  },
+  "tabs": [],
+  "anchors": [
+    {
+      "name": "Coverage",
+      "icon": "map",
+      "url": "https://docketlayer.ai/coverage"
+    },
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/DocketLayer"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting started",
+      "pages": [
+        "introduction",
+        "quickstart",
+        "authentication",
+        "x402",
+        "errors"
+      ]
+    },
+    {
+      "group": "API reference",
+      "pages": [
+        "api-reference/case",
+        "api-reference/monitor",
+        "api-reference/batch",
+        "api-reference/status",
+        "api-reference/wallet-keys",
+        "api-reference/wallet-deliveries",
+        "api-reference/mcp",
+        "api-reference/fields"
+      ]
+    },
+    {
+      "group": "Concepts",
+      "pages": [
+        "guides/context",
+        "guides/delta",
+        "guides/callbacks",
+        "guides/hmac-verification",
+        "guides/idempotency",
+        "guides/caching",
+        "guides/document-identifiers"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/wallet-setup",
+        "guides/mcp-server",
+        "guides/ai-agents",
+        "guides/sandbox",
+        "guides/monitoring-loop",
+        "guides/court-codes",
+        "guides/case-id-format",
+        "guides/migration-v1-to-v2"
+      ]
+    },
+    {
+      "group": "Integration quickstarts",
+      "pages": [
+        "guides/quickstart-curl",
+        "guides/quickstart-python",
+        "guides/quickstart-js"
+      ]
+    },
+    {
+      "group": "Resources",
+      "pages": [
+        "pricing",
+        "rate-limits",
+        "versioning",
+        "glossary",
+        "faq",
+        "coverage-roadmap",
+        "changelog"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/DocketLayer"
+  }
+}

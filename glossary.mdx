@@ -1,0 +1,89 @@
+---
+title: Glossary
+description: Key terms used throughout the DocketLayer documentation.
+---
+
+<dl>
+
+<dt>**callback_url**</dt>
+<dd>An optional URL supplied on a `GET /v2/case` request. When present, DocketLayer pushes a signed copy of the response to that URL asynchronously after the synchronous response is returned.</dd>
+
+<dt>**cache_age_seconds**</dt>
+<dd>A field in the response meta block. The number of seconds since DocketLayer's normalization service last refreshed this case from the source court. A value of 0 means the data was just normalized.</dd>
+
+<dt>**case_id**</dt>
+<dd>The case identifier passed in API requests. For US federal courts, this follows the PACER format: `division:year-type-number` (e.g. `1:24-cv-01234`). For state and Canadian courts, the format varies by court — see the `case_id_format` field in `/v2/status` for each court's pattern and example.</dd>
+
+<dt>**CM/ECF**</dt>
+<dd>Case Management/Electronic Case Files. The case management system used by all US federal district and bankruptcy courts. DocketLayer accesses CM/ECF courts through PACER.</dd>
+
+<dt>**context**</dt>
+<dd>A request parameter (`basic` or `full`) that controls the depth of case data returned. `basic` returns the case header, status, and primary parties. `full` additionally includes the complete party list with attorneys, cross-references, and full docket history.</dd>
+
+<dt>**court_code**</dt>
+<dd>A short lowercase identifier for a court — e.g. `nysd`, `deb`, `cand`. Used in API requests and returned in responses. For US federal courts, codes follow PACER conventions with minor exceptions. For state and Canadian courts, codes are documented in `/v2/status`.</dd>
+
+<dt>**cross_references**</dt>
+<dd>A field in `context=full` responses listing other cases related to the queried case — consolidated cases, appeals, MDL member cases, and similar relationships.</dd>
+
+<dt>**delta**</dt>
+<dd>The block in a `GET /v2/case` or `GET /v2/monitor` response that describes what has changed since `last_checked`. Only present when `last_checked` is supplied. Contains `changed`, `change_count`, and `new_filings`.</dd>
+
+<dt>**docket_history**</dt>
+<dd>The complete chronological record of filings in a case. Returned only with `context=full`. For very large cases, may be truncated to fit the 2MB response ceiling.</dd>
+
+<dt>**document_identifier**</dt>
+<dd>The identifier for a court document within its source court's system. The `document_identifier_type` field tells you which system's scheme the identifier belongs to.</dd>
+
+<dt>**filing_types**</dt>
+<dd>A comma-separated request parameter that filters `delta.new_filings` to specified filing type values. Does not filter the case context. Example: `filing_types=order,judgment`.</dd>
+
+<dt>**HMAC**</dt>
+<dd>Hash-based Message Authentication Code. DocketLayer uses HMAC-SHA256 to sign callback deliveries. The key is per-wallet and managed via `GET /v2/wallet/keys` and `POST /v2/wallet/keys`.</dd>
+
+<dt>**idempotency key**</dt>
+<dd>A stable UUIDv4 sent in the `Idempotency-Key` header on every callback delivery attempt. The same key is used on all retry attempts for a given delivery. Use it to deduplicate if your endpoint receives a delivery more than once.</dd>
+
+<dt>**last_checked**</dt>
+<dd>An ISO-8601 timestamp passed in API requests. When present, the response includes a `delta` block containing all filings since that timestamp. Always update `last_checked` to `meta.queried_at` from the response.</dd>
+
+<dt>**MCP (Model Context Protocol)**</dt>
+<dd>An open standard for connecting AI agents to data sources and tools. DocketLayer exposes a remote MCP server at `POST /v2/mcp` using the Streamable HTTP transport.</dd>
+
+<dt>**meta**</dt>
+<dd>A block present in every DocketLayer response containing request metadata: `request_id`, `queried_at`, `query_cost_usd`, `coverage_status`, `cache_age_seconds`, `context_delivered`, `language_delivered`, `truncated`, `sandbox`, and `tag`.</dd>
+
+<dt>**normalization**</dt>
+<dd>The process by which DocketLayer converts raw court data from source systems (PACER, state portals, Canadian courts) into the standard response schema. Performed by the normalization service, not the API worker.</dd>
+
+<dt>**nature_of_proceeding**</dt>
+<dd>A case field describing the subject-matter category of the case — equivalent to PACER's nature-of-suit code for federal courts. Uses consistent categorization across all jurisdictions. Renamed from `nature_of_suit` in v2.</dd>
+
+<dt>**PACER**</dt>
+<dd>Public Access to Court Electronic Records. The US federal judiciary's online system for accessing court case and docket information. DocketLayer uses commercial PACER credentials to retrieve federal court data on behalf of callers.</dd>
+
+<dt>**primary_parties**</dt>
+<dd>The subset of case parties flagged as primary — typically the lead plaintiff and lead defendant. Returned in `context=basic`. The full party list requires `context=full`.</dd>
+
+<dt>**queried_at**</dt>
+<dd>An ISO-8601 timestamp in the `meta` block representing when DocketLayer processed the request. Always use this value as `last_checked` on your next query — not your system's current time.</dd>
+
+<dt>**sandbox mode**</dt>
+<dd>A test mode that returns fixture data on any endpoint without requiring payment. Activated with `?test=1` or the `X-DocketLayer-Test: 1` header. Responses have `meta.sandbox: true` and `meta.query_cost_usd: 0`.</dd>
+
+<dt>**truncation**</dt>
+<dd>When a `context=full` response would exceed 2MB, `docket_history` is trimmed to the largest number of entries that fit. The response includes `meta.truncated: true` and a `truncation_details` object. Truncated responses are billable.</dd>
+
+<dt>**Tyler Odyssey**</dt>
+<dd>A case management platform used by many US state courts. DocketLayer covers Tyler Odyssey deployments via a dedicated scraper module.</dd>
+
+<dt>**USDC**</dt>
+<dd>USD Coin. The stablecoin used for DocketLayer payments. Payments are made on the Solana network via the x402 protocol.</dd>
+
+<dt>**x402**</dt>
+<dd>An open payment protocol built on the HTTP 402 status code. DocketLayer uses x402 as its sole authentication mechanism. When a paid endpoint is called without payment, the server returns HTTP 402 with machine-readable payment requirements. The x402 client library constructs and signs the payment automatically.</dd>
+
+<dt>**X-DocketLayer-Tag**</dt>
+<dd>An optional request header containing a caller-supplied string (max 64 characters) that is echoed back in `meta.tag`. Use it to correlate API responses with your internal tracking identifiers.</dd>
+
+</dl>

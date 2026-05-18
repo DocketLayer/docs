@@ -1,0 +1,97 @@
+---
+title: GET /v2/status
+description: Free endpoint. Returns current court coverage and API health. No payment required.
+---
+
+## Overview
+
+`GET /v2/status` returns DocketLayer's current operational status and the full list of registered courts with their coverage level, case ID format, and refresh cadence. This endpoint is **free** — no payment, no wallet, no x402 required.
+
+Use it to check coverage before querying a court, to verify connectivity, and to discover case ID format patterns for each court.
+
+**Base URL:** `https://api.docketlayer.ai`
+
+**Price:** Free
+
+## Request
+
+```bash
+curl https://api.docketlayer.ai/v2/status
+```
+
+No parameters required.
+
+## Response
+
+```json
+{
+  "meta": {
+    "request_id": "req_01jt7y4kx0",
+    "queried_at": "2026-04-29T12:00:00Z"
+  },
+  "api_version": "2.0.0",
+  "changelog_url": "https://docketlayer.ai/changelog",
+  "operational_status": "nominal",
+  "courts": [
+    {
+      "court_code": "nysd",
+      "name": "Southern District of New York",
+      "jurisdiction_country": "US",
+      "language": "en",
+      "case_id_format": {
+        "pattern": "^\\d+:\\d{2}-[a-z]+-\\d+$",
+        "example": "1:24-cv-01234"
+      },
+      "coverage": "full",
+      "refresh_cadence_seconds": 900,
+      "case_management_system": "CM/ECF",
+      "notes": null
+    }
+  ]
+}
+```
+
+`refresh_cadence_seconds` is 3,600 (1 hour) for most courts. A select number of high-priority courts poll at 900 seconds (15 minutes). The value is `null` for courts with `planned` coverage that are not yet active.
+
+## Response fields
+
+### Top-level
+
+| Field | Type | Description |
+|---|---|---|
+| `api_version` | string | Current API version |
+| `changelog_url` | string | Link to changelog |
+| `operational_status` | string | `nominal`, `degraded`, `maintenance`, or `incident` |
+| `courts` | array | All registered courts — covered and planned |
+
+### Court object
+
+| Field | Type | Description |
+|---|---|---|
+| `court_code` | string | Identifier to use in API queries |
+| `name` | string | Full court name |
+| `jurisdiction_country` | string | `US` or `CA` |
+| `language` | string | `en`, `fr`, or `bilingual` |
+| `case_id_format.pattern` | string | Regex the court's case IDs must match |
+| `case_id_format.example` | string | Example case ID for this court |
+| `coverage` | string | `full`, `partial`, or `planned` — see below |
+| `refresh_cadence_seconds` | number \| null | How often DocketLayer polls this court; null where not yet active |
+| `case_management_system` | string \| null | Source system — e.g. `CM/ECF`, `Custom`; null where not yet active |
+| `notes` | string \| null | Known limitations or access notes for this court |
+
+### Coverage values
+
+| Value | Meaning |
+|---|---|
+| `full` | Scraper active; court fully supported |
+| `partial` | Court reachable but coverage has known gaps |
+| `planned` | Built or in progress; access pending — querying returns 422 |
+
+### Operational status values
+
+| Status | Meaning |
+|---|---|
+| `nominal` | All systems operating normally |
+| `degraded` | Partial degradation — some courts affected |
+| `maintenance` | Scheduled maintenance in progress |
+| `incident` | Active incident under investigation |
