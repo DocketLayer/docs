@@ -6,7 +6,6 @@ description: Get your first DocketLayer query running in under 5 minutes.
 ## Prerequisites
 
 - A Solana wallet funded with USDC — see the [wallet setup guide](/guides/wallet-setup)
-- The x402 client library installed for your language
 - A case identifier and court code for a covered court (US state, federal, or Canadian)
 
 ---
@@ -37,59 +36,64 @@ The response is a fixture — real structure, no real data, no charge.
 
 ## Step 3 — Make your first paid query
 
+DocketLayer uses the [x402 payment protocol](/x402) — payment is a signed Solana USDC transaction attached to the request. The flow is: send request → receive 402 with payment requirements → sign and attach payment → retry.
+
+The easiest path for AI coding environments is the [MCP npm package](/guides/mcp-server), which handles payment automatically. For direct REST integration:
+
 <CodeGroup>
 
-```python Python
-import os
-from x402 import PaymentClient
+```typescript TypeScript
+import bs58 from "bs58";
+import { createKeyPairSignerFromBytes } from "@solana/signers";
+import { ExactSvmScheme } from "@x402/svm";
+import { x402Client, x402HTTPClient } from "@x402/core/client";
 
-client = PaymentClient(
-    private_key=os.environ["SOLANA_PRIVATE_KEY"],
-    network="solana-mainnet",
-    currency="USDC"
-)
+// Set up the x402 payment client once
+const keyBytes = bs58.decode(process.env.DOCKETLAYER_WALLET_PRIVATE_KEY!);
+const signer = await createKeyPairSignerFromBytes(keyBytes);
 
-result = client.get(
-    "https://api.docketlayer.ai/v2/case",
-    params={
-        "case_id": "1:24-cv-01234",
-        "court_code": "nysd",
-        "last_checked": "2026-01-01T00:00:00Z"
-    }
-).json()
+const scheme = new ExactSvmScheme(signer);
+const client = new x402Client();
+(client as any).register("exact", scheme);
+const httpClient = new x402HTTPClient(client);
 
-if result["delta"]["changed"]:
-    for filing in result["delta"]["new_filings"]:
-        print(f"{filing['filing_type']}: {filing['description']}")
-else:
-    print("No changes")
-```
+// Make the initial request — expect 402
+const url =
+  "https://api.docketlayer.ai/v2/case" +
+  "?case_id=1:24-cv-01234&court_code=nysd&last_checked=2026-01-01T00:00:00Z";
 
-```javascript JavaScript
-import { createPaymentClient } from "x402";
-import { Keypair, Connection } from "@solana/web3.js";
+const initial = await fetch(url);
+if (initial.status !== 402) throw new Error(`Unexpected status ${initial.status}`);
 
-const connection = new Connection("https://api.mainnet-beta.solana.com");
-const wallet = Keypair.fromSecretKey(
-  Buffer.from(process.env.SOLANA_PRIVATE_KEY, "base64")
-);
-const client = createPaymentClient({ wallet, connection, network: "solana-mainnet", currency: "USDC" });
+// Parse requirements, sign, and retry
+const requirements = JSON.parse(initial.headers.get("X-Payment-Requirements")!);
+const payload = await httpClient.createPaymentPayload(requirements);
+const paymentHeaders = httpClient.encodePaymentSignatureHeader(payload);
 
-const url = new URL("https://api.docketlayer.ai/v2/case");
-url.searchParams.set("case_id", "1:24-cv-01234");
-url.searchParams.set("court_code", "nysd");
-url.searchParams.set("last_checked", "2026-01-01T00:00:00Z");
+const response = await fetch(url, { headers: paymentHeaders });
+const data = await response.json();
 
-const data = await client.fetch(url.toString()).then(r => r.json());
-console.log(data.delta?.changed ? data.delta.new_filings : "No changes");
+if (data.delta?.changed) {
+  for (const filing of data.delta.new_filings) {
+    console.log(`${filing.filing_type}: ${filing.description}`);
+  }
+} else {
+  console.log("No changes");
+}
 ```
 
 ```bash curl (sandbox)
 curl "https://api.docketlayer.ai/v2/case?test=1&case_id=1:24-cv-01234&court_code=nysd&last_checked=2026-01-01T00:00:00Z"
-# Use the x402 client library for live paid queries — curl does not handle the 402 flow automatically
+# For live paid queries, use the TypeScript x402 libraries or the MCP npm package
 ```
 
 </CodeGroup>
+
+**Dependencies for the TypeScript example:**
+
+```bash
+npm install bs58 @solana/signers @x402/svm @x402/core
+```
 
 ---
 
@@ -156,17 +160,18 @@ The `delta` block is only present when `last_checked` is supplied. Store `meta.q
 
 DocketLayer never charges for failed queries.
 
-```python
-if response.status_code == 402:
-    # Payment failed — check wallet balance and x402 configuration
-elif response.status_code == 404:
-    # Case not found — verify case_id format and court_code
-elif response.status_code == 422:
-    # Court not covered — check /v2/status for current coverage
-elif response.status_code == 429:
-    # Rate limited — back off, retry after retry_after interval
-elif response.status_code == 503:
-    # Upstream court system unavailable — retry later, check /v2/status
+```typescript
+if (response.status === 402) {
+  // Payment failed — check wallet balance and x402 configuration
+} else if (response.status === 404) {
+  // Case not found — verify case_id format and court_code
+} else if (response.status === 422) {
+  // Court not covered — check /v2/status for current coverage
+} else if (response.status === 429) {
+  // Rate limited — back off, retry after retry_after interval
+} else if (response.status === 503) {
+  // Upstream court system unavailable — retry later, check /v2/status
+}
 ```
 
 ---
