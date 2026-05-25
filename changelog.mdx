@@ -5,6 +5,30 @@ description: All notable changes to DocketLayer, documented by version.
 
 All notable changes to DocketLayer are documented here. DocketLayer follows semantic versioning — major.minor.patch.
 
+## 2.0.2 — May 2026
+
+**All courts active; LAUNCH_ENABLED master switch**
+
+<AccordionGroup>
+
+<Accordion title="What's new in 2.0.2">
+
+### Added
+
+- **LAUNCH_ENABLED gate** — a `LAUNCH_ENABLED` Worker environment variable controls whether paid endpoints are accessible. When not set to `"true"`, all paid endpoints return `503 service_unavailable`. `GET /v2/status` and sandbox requests bypass the gate and are always accessible. Toggle via the Cloudflare dashboard — no code deploy required.
+
+### Changed
+
+- **Texas courts now active** — all 37 Texas state courts (`coverage: "full"`) accept paid queries.
+- **Quebec courts now active** — `qc_cs` (Cour supérieure du Québec) and `qc_ca` (Cour d'appel du Québec) are active with `coverage: "partial"`. Both use the publicly accessible REJ portal (`registre-actions.qc.ca`).
+- **`pending_approval_coverage` removed from `/v2/status`** — this field has been removed from the response. All registered courts, including those with `planned` coverage, now appear in the `courts` array.
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
 ## 2.0.1 — May 2026
 
 **Oklahoma and West Virginia state court coverage**
@@ -47,7 +71,7 @@ All notable changes to DocketLayer are documented here. DocketLayer follows sema
 - **Sandbox mode** — `?test=1` or `X-DocketLayer-Test: 1` returns fixture data on any endpoint with no payment required
 - **`X-DocketLayer-Tag` header** — arbitrary tag echoed back in `meta.tag` for caller-side request correlation
 - **`jurisdiction_country`** — courts are labeled `US` or `CA`; Canadian federal and provincial courts launch in the registry at v2.0.0
-- **Quebec courts built, valve closed** — `qc_cs` (Cour supérieure du Québec) and `qc_ca` (Cour d'appel du Québec) are in the registry with scrapers built but carry `planned` status pending a SOQUIJ commercial agreement. They appear in `/v2/status` but return 422 on docket queries.
+- **Quebec courts built, valve closed** — `qc_cs` (Cour supérieure du Québec) and `qc_ca` (Cour d'appel du Québec) are in the registry with scrapers built but carry `planned` status pending a SOQUIJ commercial agreement. They appear in `/v2/status` but return 422 on docket queries. (Activated in 2.0.2.)
 
 ### Changed
 
