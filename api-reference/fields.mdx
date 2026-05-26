@@ -200,7 +200,7 @@ Present when `last_checked` was supplied in the request.
 | `meta.batch_size` | integer | no | Number of queries submitted. |
 | `meta.successful` | integer | no | Successful queries. |
 | `meta.failed` | integer | no | Failed queries. |
-| `meta.total_cost_usd` | number | no | `0.99 × meta.batch_size`. The x402 payment covers the full batch upfront. No payment is settled only if all queries fail; if any succeed, the full batch amount is charged. |
+| `meta.total_cost_usd` | number | no | `0.99 × meta.batch_size`. The x402 payment covers the full batch upfront. We settle no payment only if all queries fail; if any succeed, we charge the full batch amount. |
 | `results` | array | no | One entry per query, in submission order. |
 
 ### Batch result entry
@@ -315,9 +315,9 @@ Not all values apply to all courts.
 | `crown` | Canadian Crown prosecution. |
 | `interested_party` | Tyler Odyssey and other state-court systems. |
 | `demandeur` | Quebec civil-law plaintiff. Stored verbatim. |
-| `d\u00e9fendeur` | Quebec civil-law defendant. Stored verbatim. |
-| `requ\u00e9rant` | Quebec applicant. Stored verbatim. |
-| `intim\u00e9` | Quebec respondent. Stored verbatim. |
+| `défendeur` | Quebec civil-law defendant. Stored verbatim. |
+| `requérant` | Quebec applicant. Stored verbatim. |
+| `intimé` | Quebec respondent. Stored verbatim. |
 
 ### `document_identifier_type` enum
 
