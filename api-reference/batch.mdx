@@ -1,17 +1,17 @@
 ---
 title: POST /v2/cases/batch
-description: Query up to 50 cases in a single call. Costs $0.99 \u00d7 N cases, paid upfront in a single transaction.
+description: Query up to 50 cases in a single call. Costs $0.99 × N cases, paid upfront in a single transaction.
 ---
 
 ## Overview
 
-`POST /v2/cases/batch` runs up to 50 case queries in a single HTTP call. One x402 payment covers the entire batch. The payment transaction must be sized for the full batch: `$0.99 \u00d7 N queries`.
+`POST /v2/cases/batch` runs up to 50 case queries in a single HTTP call. One x402 payment covers the entire batch. The payment transaction must be sized for the full batch: `$0.99 × N queries`.
 
 **Base URL:** `https://api.docketlayer.ai`
 
-**Price:** $0.99 \u00d7 number of queries in the batch
+**Price:** $0.99 × number of queries in the batch
 
-**Sandbox:** Add `?test=1` or `X-DocketLayer-Test: 1` \u2014 returns fixture data for all queries, no charge
+**Sandbox:** Add `?test=1` or `X-DocketLayer-Test: 1` — returns fixture data for all queries, no charge
 
 ## Request
 
@@ -92,7 +92,7 @@ description: Query up to 50 cases in a single call. Costs $0.99 \u00d7 N cases, 
 | `batch_size` | number | Total number of queries submitted |
 | `successful` | number | Number of queries that returned data |
 | `failed` | number | Number of queries that returned errors |
-| `total_cost_usd` | number | Total charge \u2014 `batch_size` \u00d7 $0.99 |
+| `total_cost_usd` | number | Total charge — `batch_size` × $0.99 |
 
 ### Result object
 
@@ -103,8 +103,8 @@ Each entry in `results` has:
 | `case_id` | string | The case_id from your query |
 | `court_code` | string | The court_code from your query |
 | `status` | string | `success` or `error` |
-| `response` | object | Full case response (same structure as `GET /v2/case`) \u2014 present when `status` is `success` |
-| `error` | object | Error details \u2014 present when `status` is `error` |
+| `response` | object | Full case response (same structure as `GET /v2/case`) — present when `status` is `success` |
+| `error` | object | Error details — present when `status` is `error` |
 
 ### Error result
 
@@ -123,10 +123,10 @@ Each entry in `results` has:
 
 ## Notes
 
-**Payment** \u2014 A single x402 payment covers the batch. The payment transaction must be sized for the full batch (`batch_size \u00d7 $0.99`). If all cases fail, no payment is settled. If some cases fail, the full batch amount is still settled \u2014 x402 payments are atomic and cannot be partially refunded.
+**Payment** — A single x402 payment covers the batch. The payment transaction must be sized for the full batch (`batch_size × $0.99`). If all cases fail, we settle no payment. If some cases fail, we still charge the full batch amount — x402 payments are atomic and cannot be partially refunded.
 
-**Ordering** \u2014 Results are returned in the same order as your `queries` array.
+**Ordering** — Results are returned in the same order as your `queries` array.
 
-**Callbacks** \u2014 The batch endpoint does not support `callback_url` per-query. Callers needing async callback delivery should use `GET /v2/case` directly.
+**Callbacks** — The batch endpoint does not support `callback_url` per-query. Callers needing async callback delivery should use `GET /v2/case` directly.
 
-**Rate limiting** \u2014 Rate limit is checked once at the batch level. A single batch counts as one request against the per-minute limit, but each successful case counts toward the per-day limit.
+**Rate limiting** — Rate limit is checked once at the batch level. A single batch counts as one request against the per-minute limit, but each successful case counts toward the per-day limit.

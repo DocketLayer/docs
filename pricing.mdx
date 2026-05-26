@@ -27,7 +27,7 @@ DocketLayer charges a flat $0.99 per successful query, paid in USDC on Solana at
 
 ## Billing principle
 
-**You are never charged for a failed single query.** Payment is captured only on 200 responses. For batch requests, the payment transaction is sized for the full batch upfront (`$0.99 × N queries`). If all cases in a batch fail, no payment is settled; if some fail, the full batch amount is still charged — x402 payments are atomic and cannot be partially refunded.
+**You are never charged for a failed single query.** We capture payment only on 200 responses. For batch requests, the payment transaction is sized for the full batch upfront (`$0.99 × N queries`). If all cases in a batch fail, no payment is settled; if some fail, the full batch amount is still charged — x402 payments are atomic and cannot be partially refunded.
 
 ## What the price does not vary by
 
