@@ -122,6 +122,5 @@ def receive_callback():
 ## Notes
 
 - `callback_url` is supported on `GET /v2/case` only — not on `/v2/monitor` or batch
-- Per-query `callback_url` values in `/v2/cases/batch` work: each query in the batch can specify its own `callback_url`
 - Your callback endpoint must be reachable from the public internet — localhost URLs will not work in production
 - DocketLayer does not validate or pre-check the `callback_url` before making the query
